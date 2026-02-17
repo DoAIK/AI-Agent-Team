@@ -1,0 +1,37 @@
+"""
+品質ゲート ── 任務班「影走り」精緻の番人用
+TaskCompleted フックとして precision-guard に適用
+品質判定フォーマットの準拠を検証する（不足時はブロック）
+"""
+import json
+import sys
+
+
+def read_payload() -> dict:
+    raw = sys.stdin.read().strip()
+    if not raw:
+        return {}
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return {}
+
+
+try:
+    payload = read_payload()
+    content = json.dumps(payload, ensure_ascii=False).lower()
+
+    required_keywords = ["品質判定", "欠陥", "go"]
+    missing = [kw for kw in required_keywords if kw not in content]
+
+    if missing:
+        print(
+            f"[影走り品質ゲート] フォーマット不備: {', '.join(missing)} が不足しています。No-Go。",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+
+    sys.exit(0)
+except Exception as exc:
+    print(f"[影走り品質ゲート] 例外発生: {exc}", file=sys.stderr)
+    sys.exit(2)

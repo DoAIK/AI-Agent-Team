@@ -1,0 +1,1609 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TSUGIAI - AI Agents が、引き継ぎを再発明する</title>
+<style>
+/* ===== Reset & Base ===== */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+  font-size: 16px;
+}
+
+body {
+  background: #0a0a0f;
+  color: #e2e8f0;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  line-height: 1.7;
+  overflow-x: hidden;
+}
+
+code, .mono {
+  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+}
+
+a {
+  color: #00ff88;
+  text-decoration: none;
+  transition: opacity 0.2s;
+}
+a:hover { opacity: 0.8; }
+
+/* ===== Utility ===== */
+.container {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+.section {
+  padding: 120px 0;
+  position: relative;
+}
+
+.section-label {
+  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  font-size: 0.75rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: #00ff88;
+  margin-bottom: 12px;
+  display: block;
+}
+
+.section-title {
+  font-size: clamp(1.8rem, 4vw, 2.8rem);
+  font-weight: 800;
+  color: #fff;
+  margin-bottom: 20px;
+  line-height: 1.3;
+}
+
+.section-subtitle {
+  font-size: 1.05rem;
+  color: #94a3b8;
+  max-width: 600px;
+  margin-bottom: 48px;
+}
+
+/* ===== Fade-in animation ===== */
+.fade-in {
+  opacity: 0;
+  transform: translateY(30px);
+  transition: opacity 0.7s ease, transform 0.7s ease;
+}
+.fade-in.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ===== Card base ===== */
+.card {
+  --glow-x: -999px;
+  --glow-y: -999px;
+  background:
+    radial-gradient(circle 120px at var(--glow-x) var(--glow-y), rgba(0,255,136,0.06), transparent),
+    rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 12px;
+  padding: 32px;
+  position: relative;
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+.card:hover {
+  border-color: rgba(0,255,136,0.3);
+  box-shadow: 0 0 40px rgba(0,255,136,0.08), 0 0 80px rgba(0,255,136,0.03);
+}
+
+/* ===== Gradient text ===== */
+.grad-text {
+  background: linear-gradient(135deg, #00ff88 0%, #6366f1 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  color: transparent;
+}
+
+/* ========================================
+   SECTION 1: HERO
+   ======================================== */
+.hero {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+.hero::after {
+  content: '';
+  position: absolute;
+  width: 400px;
+  height: 400px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(99,102,241,0.06) 0%, transparent 70%);
+  top: 30%;
+  left: 20%;
+  animation: glowPulse 5s ease-in-out infinite 2s;
+  pointer-events: none;
+}
+
+/* Background grid */
+.hero-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(99,102,241,0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(99,102,241,0.07) 1px, transparent 1px);
+  background-size: 60px 60px;
+  animation: gridPulse 6s ease-in-out infinite;
+}
+
+@keyframes gridPulse {
+  0%, 100% { opacity: 0.3; transform: scale(1); }
+  50% { opacity: 0.8; transform: scale(1.03); }
+}
+
+/* Radial glow */
+.hero-glow {
+  position: absolute;
+  width: 600px;
+  height: 600px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(0,255,136,0.08) 0%, transparent 70%);
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  animation: glowPulse 4s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes glowPulse {
+  0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 0.6; }
+  50% { transform: translate(-50%, -50%) scale(1.15); opacity: 1; }
+}
+
+.hero-content {
+  position: relative;
+  z-index: 1;
+}
+
+.hero-logo {
+  font-size: clamp(3.5rem, 10vw, 7rem);
+  font-weight: 900;
+  letter-spacing: 0.15em;
+  background: linear-gradient(135deg, #00ff88 0%, #6366f1 50%, #00ff88 100%);
+  background-size: 200% 200%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  color: transparent;
+  animation: gradShift 5s ease infinite;
+  margin-bottom: 16px;
+}
+
+@keyframes gradShift {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+.hero-tagline {
+  font-size: clamp(1rem, 2.5vw, 1.35rem);
+  color: #94a3b8;
+  margin-bottom: 40px;
+  font-weight: 400;
+}
+
+.hero-badges {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-bottom: 60px;
+}
+
+.badge {
+  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  font-size: 0.72rem;
+  padding: 6px 14px;
+  border: 1px solid rgba(99,102,241,0.3);
+  border-radius: 6px;
+  color: #a5b4fc;
+  background: rgba(99,102,241,0.08);
+  letter-spacing: 0.04em;
+}
+
+/* Scroll indicator */
+.scroll-indicator {
+  position: absolute;
+  bottom: 40px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  color: #475569;
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+  animation: scrollBounce 2s ease-in-out infinite;
+}
+
+.scroll-indicator::after {
+  content: '';
+  width: 1px;
+  height: 30px;
+  background: linear-gradient(to bottom, #475569, transparent);
+}
+
+@keyframes scrollBounce {
+  0%, 100% { transform: translateX(-50%) translateY(0); }
+  50% { transform: translateX(-50%) translateY(8px); }
+}
+
+/* ========================================
+   SECTION 2: PROBLEM
+   ======================================== */
+.problem-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+}
+
+.problem-card {
+  text-align: center;
+}
+
+.problem-card .card-icon {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 20px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+/* Icon 1: Broken checklist (gap lines) */
+.problem-card:nth-child(1) .card-icon {
+  background: rgba(239,68,68,0.1);
+  border: 1px solid rgba(239,68,68,0.2);
+}
+.problem-card:nth-child(1) .card-icon::before {
+  content: '';
+  width: 24px;
+  height: 2px;
+  background: #ef4444;
+  box-shadow: 0 8px 0 #ef4444, 0 16px 0 transparent, 0 -8px 0 #ef4444;
+}
+
+/* Icon 2: Loop (circular arrows) */
+.problem-card:nth-child(2) .card-icon {
+  background: rgba(245,158,11,0.1);
+  border: 1px solid rgba(245,158,11,0.2);
+}
+.problem-card:nth-child(2) .card-icon::before {
+  content: '';
+  width: 22px;
+  height: 22px;
+  border: 2px solid transparent;
+  border-top-color: #f59e0b;
+  border-right-color: #f59e0b;
+  border-radius: 50%;
+}
+.problem-card:nth-child(2) .card-icon::after {
+  content: '';
+  position: absolute;
+  top: 13px;
+  right: 12px;
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-bottom: 6px solid #f59e0b;
+  transform: rotate(45deg);
+}
+
+/* Icon 3: Fading layers (knowledge loss) */
+.problem-card:nth-child(3) .card-icon {
+  background: rgba(139,92,246,0.1);
+  border: 1px solid rgba(139,92,246,0.2);
+}
+.problem-card:nth-child(3) .card-icon::before {
+  content: '';
+  width: 20px;
+  height: 14px;
+  border: 2px solid #8b5cf6;
+  border-radius: 2px;
+  box-shadow: 4px 4px 0 -1px rgba(139,92,246,0.4), 8px 8px 0 -1px rgba(139,92,246,0.15);
+}
+
+.problem-card h3 {
+  font-size: 1.15rem;
+  color: #fff;
+  margin-bottom: 10px;
+}
+
+.problem-card p {
+  font-size: 0.9rem;
+  color: #94a3b8;
+  line-height: 1.6;
+}
+
+/* ========================================
+   SECTION 3: ARCHITECTURE (Star section)
+   ======================================== */
+.arch-flow {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  position: relative;
+}
+
+/* Vertical pulse line */
+.arch-flow::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: linear-gradient(to bottom, transparent, rgba(0,255,136,0.3), rgba(99,102,241,0.3), transparent);
+  transform: translateX(-50%);
+  z-index: 0;
+}
+
+.arch-agents {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+  position: relative;
+  z-index: 1;
+}
+.arch-agents::before,
+.arch-agents::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  width: 24px;
+  height: 2px;
+  z-index: 2;
+}
+.arch-agents::before {
+  left: calc(33.33% - 12px);
+  background: linear-gradient(90deg, #00ff88, #6366f1);
+  animation: dataFlowPulse 2s ease-in-out infinite;
+}
+.arch-agents::after {
+  left: calc(66.66% - 12px);
+  background: linear-gradient(90deg, #6366f1, #f59e0b);
+  animation: dataFlowPulse 2s ease-in-out infinite 0.5s;
+}
+@keyframes dataFlowPulse {
+  0%, 100% { opacity: 0.3; transform: translateY(-50%) scaleX(0.6); }
+  50% { opacity: 1; transform: translateY(-50%) scaleX(1); }
+}
+
+.agent-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.agent-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+}
+
+.agent-card:nth-child(1)::before {
+  background: linear-gradient(90deg, #00ff88, #10b981);
+}
+.agent-card:nth-child(2)::before {
+  background: linear-gradient(90deg, #6366f1, #818cf8);
+}
+.agent-card:nth-child(3)::before {
+  background: linear-gradient(90deg, #f59e0b, #fbbf24);
+}
+
+.agent-number {
+  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  font-size: 0.7rem;
+  color: #00ff88;
+  letter-spacing: 0.1em;
+  margin-bottom: 8px;
+  display: block;
+}
+
+.agent-card h3 {
+  font-size: 1.2rem;
+  color: #fff;
+  margin-bottom: 6px;
+}
+
+.agent-card .agent-role {
+  font-size: 0.82rem;
+  color: #00ff88;
+  margin-bottom: 14px;
+  font-weight: 500;
+}
+
+.agent-card p {
+  font-size: 0.88rem;
+  color: #94a3b8;
+  margin-bottom: 16px;
+  line-height: 1.6;
+}
+
+.agent-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.agent-tool {
+  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  font-size: 0.65rem;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.08);
+  color: #cbd5e1;
+}
+
+/* Data flow diagram */
+.data-flow {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  flex-wrap: wrap;
+  padding: 24px 0;
+}
+
+.flow-node {
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  font-size: 0.78rem;
+  white-space: nowrap;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: #e2e8f0;
+}
+
+.flow-arrow {
+  width: 40px;
+  height: 2px;
+  position: relative;
+  flex-shrink: 0;
+  background: repeating-linear-gradient(
+    90deg,
+    #00ff88 0px, #00ff88 4px,
+    transparent 4px, transparent 8px
+  );
+  background-size: 200% 100%;
+  animation: dashFlow 1.5s linear infinite;
+}
+@keyframes dashFlow {
+  0% { background-position: 0% 0; }
+  100% { background-position: -16px 0; }
+}
+
+.flow-arrow::after {
+  content: '';
+  position: absolute;
+  right: -1px;
+  top: -4px;
+  width: 0;
+  height: 0;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  border-left: 7px solid #6366f1;
+}
+
+@keyframes flowPulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
+/* ========================================
+   SECTION 4: FEATURES (4-Phase Flow)
+   ======================================== */
+.phase-bar {
+  display: flex;
+  gap: 0;
+  margin-bottom: 48px;
+  position: relative;
+}
+
+.phase-bar::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: rgba(255,255,255,0.06);
+}
+
+.phase-tab {
+  flex: 1;
+  padding: 16px 12px;
+  text-align: center;
+  cursor: pointer;
+  position: relative;
+  transition: color 0.3s;
+  border: none;
+  background: none;
+  color: #64748b;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 0.88rem;
+}
+
+.phase-tab::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: transparent;
+  transition: background 0.3s;
+  z-index: 1;
+}
+
+.phase-tab.active {
+  color: #00ff88;
+}
+
+.phase-tab.active::after {
+  background: linear-gradient(90deg, #00ff88, #6366f1);
+}
+
+.phase-tab-num {
+  display: block;
+  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  font-size: 0.65rem;
+  letter-spacing: 0.1em;
+  margin-bottom: 4px;
+}
+
+.phase-panels {
+  position: relative;
+  min-height: 200px;
+}
+
+.phase-panel {
+  display: none;
+  animation: fadePanel 0.4s ease;
+}
+
+.phase-panel.active {
+  display: block;
+}
+
+@keyframes fadePanel {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.phase-panel h3 {
+  font-size: 1.3rem;
+  color: #fff;
+  margin-bottom: 12px;
+}
+
+.phase-panel p {
+  color: #94a3b8;
+  max-width: 600px;
+  margin-bottom: 20px;
+}
+
+.phase-features {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.phase-feature {
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  background: rgba(0,255,136,0.06);
+  border: 1px solid rgba(0,255,136,0.15);
+  color: #00ff88;
+}
+
+.phase-highlight {
+  margin-top: 20px;
+  padding: 16px 20px;
+  border-left: 3px solid #6366f1;
+  background: rgba(99,102,241,0.06);
+  border-radius: 0 8px 8px 0;
+  font-size: 0.88rem;
+  color: #c7d2fe;
+}
+
+/* ========================================
+   SECTION 5: ANTI-COMPLACENCY
+   ======================================== */
+.walls {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  max-width: 700px;
+  margin: 0 auto;
+}
+
+.wall-layer {
+  position: relative;
+  padding: 24px 32px;
+  border: 1px solid rgba(255,255,255,0.06);
+  background: rgba(255,255,255,0.02);
+  transition: all 0.3s ease;
+}
+
+.wall-layer:first-child {
+  border-radius: 12px 12px 0 0;
+}
+.wall-layer:last-child {
+  border-radius: 0 0 12px 12px;
+}
+
+.wall-layer:hover {
+  background: rgba(0,255,136,0.04);
+  border-color: rgba(0,255,136,0.2);
+  transform: translateX(8px);
+}
+.wall-layer:hover::before {
+  box-shadow: 0 0 12px currentColor;
+}
+.wall-layer:nth-child(1):hover::before { box-shadow: 0 0 12px #00ff88; }
+.wall-layer:nth-child(2):hover::before { box-shadow: 0 0 12px #10b981; }
+.wall-layer:nth-child(3):hover::before { box-shadow: 0 0 12px #6366f1; }
+.wall-layer:nth-child(4):hover::before { box-shadow: 0 0 12px #818cf8; }
+.wall-layer:nth-child(5):hover::before { box-shadow: 0 0 12px #f59e0b; }
+
+.wall-layer::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+}
+
+.wall-layer:nth-child(1)::before { background: #00ff88; }
+.wall-layer:nth-child(2)::before { background: #10b981; }
+.wall-layer:nth-child(3)::before { background: #6366f1; }
+.wall-layer:nth-child(4)::before { background: #818cf8; }
+.wall-layer:nth-child(5)::before { background: #f59e0b; }
+
+.wall-number {
+  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  font-size: 0.65rem;
+  color: #64748b;
+  letter-spacing: 0.1em;
+}
+
+.wall-layer h3 {
+  font-size: 1.05rem;
+  color: #fff;
+  margin: 4px 0 6px;
+}
+
+.wall-layer p {
+  font-size: 0.85rem;
+  color: #94a3b8;
+  line-height: 1.5;
+}
+
+/* Shield visual behind walls */
+.walls-wrapper {
+  position: relative;
+}
+
+.walls-wrapper::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: -20px;
+  bottom: -20px;
+  width: calc(100% + 40px);
+  max-width: 740px;
+  transform: translateX(-50%);
+  border: 1px solid rgba(0,255,136,0.06);
+  border-radius: 16px;
+  pointer-events: none;
+  animation: shieldPulse 4s ease-in-out infinite;
+}
+@keyframes shieldPulse {
+  0%, 100% { border-color: rgba(0,255,136,0.04); opacity: 0.5; }
+  50% { border-color: rgba(0,255,136,0.12); opacity: 1; }
+}
+
+/* ========================================
+   SECTION 6: VOICE AI
+   ======================================== */
+.voice-compare {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 32px;
+  margin-bottom: 40px;
+}
+
+.voice-card {
+  position: relative;
+}
+
+.voice-card.legacy {
+  opacity: 0.6;
+}
+
+.voice-card.tsugiai-voice {
+  border-color: rgba(0,255,136,0.2);
+}
+
+.voice-card h3 {
+  font-size: 1.05rem;
+  color: #fff;
+  margin-bottom: 16px;
+}
+
+.voice-pipeline {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pipe-step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.82rem;
+  color: #94a3b8;
+}
+
+.pipe-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.legacy .pipe-dot {
+  background: #64748b;
+}
+
+.tsugiai-voice .pipe-dot {
+  background: #00ff88;
+  box-shadow: 0 0 8px rgba(0,255,136,0.4);
+}
+
+.pipe-connector {
+  width: 2px;
+  height: 12px;
+  margin-left: 3px;
+  background: rgba(255,255,255,0.1);
+}
+
+.tsugiai-voice .pipe-connector {
+  background: rgba(0,255,136,0.2);
+}
+
+.latency-label {
+  margin-top: 16px;
+  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  font-size: 0.75rem;
+  padding: 6px 12px;
+  border-radius: 4px;
+  display: inline-block;
+}
+
+.legacy .latency-label {
+  color: #ef4444;
+  background: rgba(239,68,68,0.1);
+  border: 1px solid rgba(239,68,68,0.2);
+}
+
+.tsugiai-voice .latency-label {
+  color: #00ff88;
+  background: rgba(0,255,136,0.1);
+  border: 1px solid rgba(0,255,136,0.2);
+}
+
+/* WebSocket visual */
+.ws-visual {
+  position: relative;
+  padding: 32px;
+  text-align: center;
+}
+
+.ws-visual .card {
+  display: inline-block;
+  padding: 20px 32px;
+}
+
+.ws-line {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin: 8px 0;
+}
+
+.ws-endpoint {
+  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  font-size: 0.8rem;
+  color: #e2e8f0;
+  padding: 6px 14px;
+  background: rgba(255,255,255,0.05);
+  border-radius: 6px;
+  border: 1px solid rgba(255,255,255,0.1);
+}
+
+.ws-arrow-right,
+.ws-arrow-left {
+  width: 60px;
+  height: 2px;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.ws-arrow-right {
+  background: linear-gradient(90deg, #00ff88, #6366f1);
+  animation: flowPulse 2s ease-in-out infinite;
+}
+
+.ws-arrow-right::after {
+  content: '';
+  position: absolute;
+  right: -1px;
+  top: -4px;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  border-left: 7px solid #6366f1;
+}
+
+.ws-arrow-left {
+  background: linear-gradient(90deg, #6366f1, #00ff88);
+  animation: flowPulse 2s ease-in-out infinite 1s;
+}
+
+.ws-arrow-left::after {
+  content: '';
+  position: absolute;
+  left: -1px;
+  top: -4px;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  border-right: 7px solid #6366f1;
+}
+
+.ws-label {
+  font-size: 0.7rem;
+  color: #64748b;
+  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+}
+
+.ws-title {
+  font-size: 0.75rem;
+  color: #64748b;
+  margin-bottom: 16px;
+  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+}
+
+.ws-spacer {
+  width: 60px;
+}
+
+/* ========================================
+   SECTION 7: TECH STACK
+   ======================================== */
+.stack-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 24px;
+}
+
+.stack-category h3 {
+  font-size: 0.88rem;
+  color: #fff;
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+.stack-items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.stack-item {
+  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  font-size: 0.78rem;
+  padding: 8px 12px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 6px;
+  color: #cbd5e1;
+  transition: all 0.2s;
+}
+
+.stack-item:hover {
+  border-color: rgba(0,255,136,0.2);
+  background: rgba(0,255,136,0.04);
+  color: #00ff88;
+}
+
+/* ========================================
+   SECTION 8: CTA
+   ======================================== */
+.cta-section {
+  text-align: center;
+  padding: 120px 0 80px;
+}
+
+.cta-title {
+  font-size: clamp(1.8rem, 4vw, 3rem);
+  font-weight: 800;
+  color: #fff;
+  margin-bottom: 16px;
+}
+
+.cta-sub {
+  font-size: 1rem;
+  color: #94a3b8;
+  margin-bottom: 40px;
+}
+
+.cta-buttons {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 32px;
+  border-radius: 8px;
+  font-size: 0.92rem;
+  font-weight: 600;
+  transition: all 0.3s;
+  border: none;
+  cursor: pointer;
+  text-decoration: none;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #00ff88, #10b981);
+  color: #0a0a0f;
+}
+.btn-primary:hover {
+  box-shadow: 0 0 30px rgba(0,255,136,0.3);
+  opacity: 1;
+  transform: translateY(-2px);
+}
+
+.btn-secondary {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.15);
+  color: #e2e8f0;
+}
+.btn-secondary:hover {
+  border-color: rgba(99,102,241,0.4);
+  background: rgba(99,102,241,0.08);
+  opacity: 1;
+  transform: translateY(-2px);
+}
+
+/* Footer */
+.footer {
+  padding: 40px 0;
+  text-align: center;
+  border-top: 1px solid rgba(255,255,255,0.05);
+}
+
+.footer p {
+  font-size: 0.78rem;
+  color: #475569;
+}
+
+/* ========================================
+   RESPONSIVE
+   ======================================== */
+@media (max-width: 768px) {
+  .section { padding: 80px 0; }
+
+  .problem-grid,
+  .arch-agents,
+  .voice-compare,
+  .stack-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .arch-agents::before,
+  .arch-agents::after {
+    display: none;
+  }
+
+  .phase-bar {
+    flex-direction: column;
+  }
+
+  .phase-tab {
+    text-align: left;
+    padding: 12px 16px;
+    border-left: 2px solid transparent;
+  }
+
+  .phase-tab.active {
+    border-left-color: #00ff88;
+  }
+
+  .phase-tab::after { display: none; }
+
+  .data-flow {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .flow-arrow {
+    width: 2px;
+    height: 30px;
+    background: linear-gradient(to bottom, #00ff88, #6366f1);
+  }
+
+  .flow-arrow::after {
+    right: -4px;
+    top: auto;
+    bottom: -1px;
+    border-top: 7px solid #6366f1;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-bottom: none;
+  }
+
+  .hero-logo {
+    letter-spacing: 0.08em;
+  }
+
+  .ws-line {
+    flex-direction: column;
+  }
+
+  .ws-arrow-right, .ws-arrow-left {
+    width: 2px;
+    height: 30px;
+  }
+
+  .ws-arrow-right {
+    background: linear-gradient(to bottom, #00ff88, #6366f1);
+  }
+  .ws-arrow-right::after {
+    right: -4px;
+    top: auto;
+    bottom: -1px;
+    border: none;
+    border-top: 7px solid #6366f1;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+  }
+  .ws-arrow-left {
+    background: linear-gradient(to bottom, #6366f1, #00ff88);
+  }
+  .ws-arrow-left::after {
+    left: -4px;
+    top: -1px;
+    bottom: auto;
+    border: none;
+    border-bottom: 7px solid #6366f1;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+  }
+}
+
+/* ===== Stagger fade-in for children ===== */
+.fade-in-stagger > * {
+  opacity: 0;
+  transform: translateY(30px);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+.fade-in-stagger.visible > * {
+  opacity: 1;
+  transform: translateY(0);
+}
+.fade-in-stagger.visible > *:nth-child(1) { transition-delay: 0s; }
+.fade-in-stagger.visible > *:nth-child(2) { transition-delay: 0.12s; }
+.fade-in-stagger.visible > *:nth-child(3) { transition-delay: 0.24s; }
+.fade-in-stagger.visible > *:nth-child(4) { transition-delay: 0.36s; }
+.fade-in-stagger.visible > *:nth-child(5) { transition-delay: 0.48s; }
+
+/* ===== Accessibility: Reduced motion ===== */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+</style>
+</head>
+<body>
+
+<!-- ============ HERO ============ -->
+<section class="hero" id="hero" aria-label="TSUGIAI Hero">
+  <div class="hero-grid" aria-hidden="true"></div>
+  <div class="hero-glow" aria-hidden="true"></div>
+  <div class="hero-content">
+    <h1 class="hero-logo">TSUGIAI</h1>
+    <p class="hero-tagline">AI Agents が、引き継ぎを再発明する</p>
+    <div class="hero-badges" role="list" aria-label="Technology stack">
+      <span class="badge" role="listitem">Google ADK</span>
+      <span class="badge" role="listitem">Gemini Live</span>
+      <span class="badge" role="listitem">FastAPI</span>
+      <span class="badge" role="listitem">React</span>
+      <span class="badge" role="listitem">Firebase</span>
+    </div>
+  </div>
+  <div class="scroll-indicator" aria-hidden="true">SCROLL</div>
+</section>
+
+<!-- ============ PROBLEM ============ -->
+<section class="section" id="problem" aria-label="Problem">
+  <div class="container">
+    <div class="fade-in">
+      <span class="section-label">Problem</span>
+      <h2 class="section-title">引き継ぎは、壊れている。</h2>
+      <p class="section-subtitle">製造業の交替勤務で繰り返される、構造的な引き継ぎの失敗。ヒューマンエラーではなく、プロセスの問題だ。</p>
+    </div>
+    <div class="problem-grid fade-in fade-in-stagger">
+      <article class="card problem-card">
+        <div class="card-icon" aria-hidden="true"></div>
+        <h3>抜け漏れ</h3>
+        <p>チェックリストがあっても、項目の確認は自己申告。重要な情報が後任に伝わらず、インシデントが繰り返される。</p>
+      </article>
+      <article class="card problem-card">
+        <div class="card-icon" aria-hidden="true"></div>
+        <h3>形骸化</h3>
+        <p>同じチェックリストを毎日繰り返すうち、確認作業がルーティン化。「いつも通り」が思考停止を生む。</p>
+      </article>
+      <article class="card problem-card">
+        <div class="card-icon" aria-hidden="true"></div>
+        <h3>暗黙知の喪失</h3>
+        <p>ベテランの経験やノウハウはドキュメントに残らない。人が替わるたびに、組織の知恵が消えていく。</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ============ ARCHITECTURE ============ -->
+<section class="section" id="architecture" aria-label="Architecture">
+  <div class="container">
+    <div class="fade-in">
+      <span class="section-label">Architecture</span>
+      <h2 class="section-title">3つのAIエージェントが、<br><span class="grad-text">引き継ぎを構造化する。</span></h2>
+      <p class="section-subtitle">Google ADK上に構築された専門エージェントが、チェックリスト生成から引き継ぎノート作成までを自律的に遂行する。</p>
+    </div>
+
+    <div class="arch-agents fade-in fade-in-stagger">
+      <article class="card agent-card">
+        <span class="agent-number">AGENT 01</span>
+        <h3>Template Agent</h3>
+        <p class="agent-role">チェックリスト自動生成</p>
+        <p>業種・職種・既存PDFから最適なチェックリストを自動生成。Geminiのマルチモーダル解析で既存ドキュメントをそのまま取り込む。</p>
+        <div class="agent-tools">
+          <span class="agent-tool">Gemini 2.0 Flash</span>
+          <span class="agent-tool">PDF Parser</span>
+          <span class="agent-tool">Firestore</span>
+        </div>
+      </article>
+      <article class="card agent-card">
+        <span class="agent-number">AGENT 02</span>
+        <h3>Checkout Agent</h3>
+        <p class="agent-role">AI対話チェックアウト</p>
+        <p>チェックリストの各項目をAIが1つずつ確認。危険キーワードを検出すると自動で深掘り質問を展開し、見逃しを防ぐ。</p>
+        <div class="agent-tools">
+          <span class="agent-tool">Gemini Live API</span>
+          <span class="agent-tool">WebSocket</span>
+          <span class="agent-tool">Trap Questions</span>
+        </div>
+      </article>
+      <article class="card agent-card">
+        <span class="agent-number">AGENT 03</span>
+        <h3>Handover Agent</h3>
+        <p class="agent-role">引き継ぎノート自動生成</p>
+        <p>対話結果を構造化し、引き継ぎノートとアクションアイテムを自動生成。後任が迷わないドキュメントを、AIが書く。</p>
+        <div class="agent-tools">
+          <span class="agent-tool">Structured Output</span>
+          <span class="agent-tool">Action Items</span>
+          <span class="agent-tool">GCS Export</span>
+        </div>
+      </article>
+    </div>
+
+    <!-- Data flow -->
+    <div class="data-flow fade-in" role="img" aria-label="Data flow: Frontend to FastAPI to ADK Agents to Firestore and GCS">
+      <div class="flow-node">React Frontend</div>
+      <div class="flow-arrow" aria-hidden="true"></div>
+      <div class="flow-node">FastAPI</div>
+      <div class="flow-arrow" aria-hidden="true"></div>
+      <div class="flow-node">ADK Agents</div>
+      <div class="flow-arrow" aria-hidden="true"></div>
+      <div class="flow-node">Firestore / GCS</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FEATURES (4-Phase) ============ -->
+<section class="section" id="features" aria-label="Features">
+  <div class="container">
+    <div class="fade-in">
+      <span class="section-label">Features</span>
+      <h2 class="section-title">4フェーズ チェックアウト</h2>
+      <p class="section-subtitle">フォーム入力から自動ドキュメント生成まで、4つのフェーズで引き継ぎ品質を担保する。</p>
+    </div>
+
+    <div class="fade-in">
+      <div class="phase-bar" role="tablist" aria-label="Phase selection">
+        <button type="button" class="phase-tab active" role="tab" aria-selected="true" aria-controls="panel-1" id="tab-1" data-phase="1">
+          <span class="phase-tab-num">PHASE 01</span>
+          Form Input
+        </button>
+        <button type="button" class="phase-tab" role="tab" aria-selected="false" aria-controls="panel-2" id="tab-2" data-phase="2">
+          <span class="phase-tab-num">PHASE 02</span>
+          Photo AI
+        </button>
+        <button type="button" class="phase-tab" role="tab" aria-selected="false" aria-controls="panel-3" id="tab-3" data-phase="3">
+          <span class="phase-tab-num">PHASE 03</span>
+          AI Dialogue
+        </button>
+        <button type="button" class="phase-tab" role="tab" aria-selected="false" aria-controls="panel-4" id="tab-4" data-phase="4">
+          <span class="phase-tab-num">PHASE 04</span>
+          Auto Generate
+        </button>
+      </div>
+
+      <div class="phase-panels">
+        <div class="phase-panel active" role="tabpanel" id="panel-1" aria-labelledby="tab-1">
+          <h3>構造化フォーム入力</h3>
+          <p>チェックリストの各項目に対して、ステータス選択とコメントを入力。Template Agentが生成した項目に沿って、漏れなく情報を記録する。</p>
+          <div class="phase-features">
+            <span class="phase-feature">自動生成チェックリスト</span>
+            <span class="phase-feature">ステータス選択</span>
+            <span class="phase-feature">コメント入力</span>
+            <span class="phase-feature">下書き自動保存</span>
+          </div>
+        </div>
+        <div class="phase-panel" role="tabpanel" id="panel-2" aria-labelledby="tab-2" hidden>
+          <h3>写真AI判定</h3>
+          <p>現場の写真をアップロードすると、Geminiのマルチモーダル解析が自動で状態を判定。目視確認だけでは見逃す異常を、AIが検出する。</p>
+          <div class="phase-features">
+            <span class="phase-feature">Gemini Vision解析</span>
+            <span class="phase-feature">異常検出アラート</span>
+            <span class="phase-feature">GCS自動アップロード</span>
+          </div>
+        </div>
+        <div class="phase-panel" role="tabpanel" id="panel-3" aria-labelledby="tab-3" hidden>
+          <h3>AI対話レビュー</h3>
+          <p>Checkout Agentがチェックリストの回答を1項目ずつレビュー。曖昧な回答や危険キーワードを検出すると、自動で深掘り質問を展開する。音声AIにも対応。</p>
+          <div class="phase-features">
+            <span class="phase-feature">逐次レビュー</span>
+            <span class="phase-feature">危険キーワード検出</span>
+            <span class="phase-feature">自動深掘り</span>
+            <span class="phase-feature">音声AI対応</span>
+          </div>
+          <div class="phase-highlight">
+            Gemini Live APIによるリアルタイム音声AI対話。テキストと音声のデュアルモードで、現場の状況に合わせた柔軟なチェックアウトを実現。
+          </div>
+        </div>
+        <div class="phase-panel" role="tabpanel" id="panel-4" aria-labelledby="tab-4" hidden>
+          <h3>自動ドキュメント生成</h3>
+          <p>Handover Agentが対話結果を分析し、構造化された引き継ぎノートとアクションアイテムを自動生成。後任は読むだけで状況を把握できる。</p>
+          <div class="phase-features">
+            <span class="phase-feature">引き継ぎノート自動生成</span>
+            <span class="phase-feature">アクションアイテム抽出</span>
+            <span class="phase-feature">優先度自動判定</span>
+            <span class="phase-feature">PDF/HTML出力</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ ANTI-COMPLACENCY ============ -->
+<section class="section" id="anti-complacency" aria-label="Anti-Complacency">
+  <div class="container">
+    <div class="fade-in">
+      <span class="section-label">Anti-Complacency</span>
+      <h2 class="section-title">形骸化を許さない、<span class="grad-text">5つの防壁。</span></h2>
+      <p class="section-subtitle">チェックリストの「慣れ」による思考停止を、多層的な仕組みで防ぐ。</p>
+    </div>
+    <div class="walls-wrapper fade-in">
+      <div class="walls fade-in fade-in-stagger" role="list" aria-label="5 layers of defense">
+        <div class="wall-layer" role="listitem">
+          <span class="wall-number">WALL 01</span>
+          <h3>トラップ質問</h3>
+          <p>意図的に誤った前提の質問を挿入。機械的に「はい」と答えると矛盾が検出され、注意を喚起する。</p>
+        </div>
+        <div class="wall-layer" role="listitem">
+          <span class="wall-number">WALL 02</span>
+          <h3>ランダム順序</h3>
+          <p>チェック項目の表示順を毎回ランダムに変更。順番の記憶による惰性確認を防止する。</p>
+        </div>
+        <div class="wall-layer" role="listitem">
+          <span class="wall-number">WALL 03</span>
+          <h3>ハードゲート</h3>
+          <p>クリティカルな項目は「確認済み」だけではPassさせない。具体的な数値や状態の入力を必須とするゲート機構。</p>
+        </div>
+        <div class="wall-layer" role="listitem">
+          <span class="wall-number">WALL 04</span>
+          <h3>AI深掘り</h3>
+          <p>Checkout Agentが回答の曖昧さを検出し、追加質問で掘り下げる。「問題なし」の一言では通過できない。</p>
+        </div>
+        <div class="wall-layer" role="listitem">
+          <span class="wall-number">WALL 05</span>
+          <h3>写真AI判定</h3>
+          <p>テキストだけでなく、写真のエビデンスを求める。Gemini Visionが写真の内容を自動解析し、報告との整合性を検証する。</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ VOICE AI ============ -->
+<section class="section" id="voice" aria-label="Voice AI">
+  <div class="container">
+    <div class="fade-in">
+      <span class="section-label">Voice AI</span>
+      <h2 class="section-title">リアルタイム音声AI、<br><span class="grad-text">Gemini Live API。</span></h2>
+      <p class="section-subtitle">従来のSTT + LLM + TTSパイプラインを統合。低レイテンシかつバージイン対応の自然な音声対話を実現。</p>
+    </div>
+
+    <div class="voice-compare fade-in fade-in-stagger">
+      <article class="card voice-card legacy">
+        <h3>従来方式</h3>
+        <div class="voice-pipeline">
+          <div class="pipe-step"><span class="pipe-dot"></span>音声入力</div>
+          <div class="pipe-connector" aria-hidden="true"></div>
+          <div class="pipe-step"><span class="pipe-dot"></span>STT（音声認識）</div>
+          <div class="pipe-connector" aria-hidden="true"></div>
+          <div class="pipe-step"><span class="pipe-dot"></span>LLM（テキスト処理）</div>
+          <div class="pipe-connector" aria-hidden="true"></div>
+          <div class="pipe-step"><span class="pipe-dot"></span>TTS（音声合成）</div>
+          <div class="pipe-connector" aria-hidden="true"></div>
+          <div class="pipe-step"><span class="pipe-dot"></span>音声出力</div>
+        </div>
+        <span class="latency-label">High Latency ~2-5s</span>
+      </article>
+      <article class="card voice-card tsugiai-voice">
+        <h3>TSUGIAI方式</h3>
+        <div class="voice-pipeline">
+          <div class="pipe-step"><span class="pipe-dot"></span>音声入力</div>
+          <div class="pipe-connector" aria-hidden="true"></div>
+          <div class="pipe-step"><span class="pipe-dot"></span>Gemini Live API（一体化処理）</div>
+          <div class="pipe-connector" aria-hidden="true"></div>
+          <div class="pipe-step"><span class="pipe-dot"></span>音声出力</div>
+        </div>
+        <span class="latency-label">Low Latency ~200ms</span>
+      </article>
+    </div>
+
+    <div class="fade-in ws-visual">
+      <div class="card">
+        <p class="ws-title">WebSocket Bi-directional Streaming</p>
+        <div class="ws-line">
+          <span class="ws-endpoint">Client</span>
+          <span class="ws-arrow-right" aria-hidden="true"></span>
+          <span class="ws-endpoint">Gemini Live</span>
+        </div>
+        <div class="ws-line">
+          <span class="ws-label">audio stream</span>
+          <span class="ws-spacer" aria-hidden="true"></span>
+          <span class="ws-label">audio + text</span>
+        </div>
+        <div class="ws-line">
+          <span class="ws-endpoint">Client</span>
+          <span class="ws-arrow-left" aria-hidden="true"></span>
+          <span class="ws-endpoint">Gemini Live</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ TECH STACK ============ -->
+<section class="section" id="techstack" aria-label="Tech Stack">
+  <div class="container">
+    <div class="fade-in">
+      <span class="section-label">Tech Stack</span>
+      <h2 class="section-title">技術スタック</h2>
+      <p class="section-subtitle">モダンなフルスタック構成で、スケーラビリティとDXを両立。</p>
+    </div>
+    <div class="stack-grid fade-in fade-in-stagger">
+      <div class="stack-category">
+        <h3>Frontend</h3>
+        <div class="stack-items">
+          <span class="stack-item">React 18</span>
+          <span class="stack-item">TypeScript</span>
+          <span class="stack-item">Vite</span>
+          <span class="stack-item">Tailwind CSS</span>
+          <span class="stack-item">TanStack Query</span>
+          <span class="stack-item">Zustand</span>
+        </div>
+      </div>
+      <div class="stack-category">
+        <h3>Backend</h3>
+        <div class="stack-items">
+          <span class="stack-item">Python 3.11</span>
+          <span class="stack-item">FastAPI</span>
+          <span class="stack-item">Google ADK</span>
+          <span class="stack-item">WebSocket</span>
+        </div>
+      </div>
+      <div class="stack-category">
+        <h3>AI</h3>
+        <div class="stack-items">
+          <span class="stack-item">Gemini 2.0 Flash</span>
+          <span class="stack-item">Gemini Live API</span>
+          <span class="stack-item">Gemini Vision</span>
+          <span class="stack-item">Structured Output</span>
+        </div>
+      </div>
+      <div class="stack-category">
+        <h3>Infrastructure</h3>
+        <div class="stack-items">
+          <span class="stack-item">Firebase Auth</span>
+          <span class="stack-item">Cloud Firestore</span>
+          <span class="stack-item">Cloud Run</span>
+          <span class="stack-item">Cloud Build</span>
+          <span class="stack-item">Cloud Storage</span>
+          <span class="stack-item">Firebase Hosting</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ CTA ============ -->
+<section class="cta-section" id="cta" aria-label="Call to action">
+  <div class="container fade-in">
+    <h2 class="cta-title">引き継ぎを、<span class="grad-text">再発明しよう。</span></h2>
+    <p class="cta-sub">TSUGIAI は、引き継ぎプロセスをAIエージェントで根本から変える。</p>
+    <div class="cta-buttons">
+      <!-- TODO: Replace placeholder URLs with actual repository and documentation links -->
+      <a href="#github" class="btn btn-primary" aria-label="View GitHub repository">GitHub</a>
+      <a href="#docs" class="btn btn-secondary" aria-label="View documentation">Documentation</a>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FOOTER ============ -->
+<footer class="footer" role="contentinfo">
+  <div class="container">
+    <p>TSUGIAI -- AI-Powered Handover System &copy; 2026</p>
+  </div>
+</footer>
+
+<script>
+/* ===== Intersection Observer for fade-in ===== */
+(function() {
+  var elements = document.querySelectorAll('.fade-in');
+  var observer = new IntersectionObserver(function(entries) {
+    entries.forEach(function(entry) {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+        observer.unobserve(entry.target);
+      }
+    });
+  }, {
+    threshold: 0.1,
+    rootMargin: '0px 0px -40px 0px'
+  });
+
+  elements.forEach(function(el) {
+    observer.observe(el);
+  });
+})();
+
+/* ===== Card mouse-tracking glow ===== */
+(function() {
+  document.querySelectorAll('.card').forEach(function(card) {
+    card.addEventListener('mousemove', function(e) {
+      var rect = card.getBoundingClientRect();
+      card.style.setProperty('--glow-x', (e.clientX - rect.left) + 'px');
+      card.style.setProperty('--glow-y', (e.clientY - rect.top) + 'px');
+    });
+    card.addEventListener('mouseleave', function() {
+      card.style.setProperty('--glow-x', '-999px');
+      card.style.setProperty('--glow-y', '-999px');
+    });
+  });
+})();
+
+/* ===== Phase tabs (WAI-ARIA Tabs pattern) ===== */
+(function() {
+  var tabs = document.querySelectorAll('.phase-tab');
+  var panels = document.querySelectorAll('.phase-panel');
+
+  function activateTab(tab) {
+    var phase = tab.getAttribute('data-phase');
+
+    tabs.forEach(function(t) {
+      t.classList.remove('active');
+      t.setAttribute('aria-selected', 'false');
+      t.setAttribute('tabindex', '-1');
+    });
+    tab.classList.add('active');
+    tab.setAttribute('aria-selected', 'true');
+    tab.setAttribute('tabindex', '0');
+    tab.focus();
+
+    panels.forEach(function(p) {
+      p.classList.remove('active');
+      p.hidden = true;
+    });
+
+    var target = document.getElementById('panel-' + phase);
+    target.classList.add('active');
+    target.hidden = false;
+  }
+
+  tabs.forEach(function(tab, index) {
+    tab.addEventListener('click', function() {
+      activateTab(this);
+    });
+
+    tab.addEventListener('keydown', function(e) {
+      var tabsArr = Array.prototype.slice.call(tabs);
+      var currentIndex = tabsArr.indexOf(this);
+      var nextIndex;
+
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        nextIndex = (currentIndex + 1) % tabsArr.length;
+        activateTab(tabsArr[nextIndex]);
+      } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        nextIndex = (currentIndex - 1 + tabsArr.length) % tabsArr.length;
+        activateTab(tabsArr[nextIndex]);
+      } else if (e.key === 'Home') {
+        e.preventDefault();
+        activateTab(tabsArr[0]);
+      } else if (e.key === 'End') {
+        e.preventDefault();
+        activateTab(tabsArr[tabsArr.length - 1]);
+      }
+    });
+
+    if (index === 0) {
+      tab.setAttribute('tabindex', '0');
+    } else {
+      tab.setAttribute('tabindex', '-1');
+    }
+  });
+})();
+</script>
+</body>
+</html>

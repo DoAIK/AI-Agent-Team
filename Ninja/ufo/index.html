@@ -1,0 +1,1124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UFO Flight Simulator</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { overflow: hidden; background: #050510; font-family: 'Courier New', monospace; }
+canvas { display: block; width: 100vw; height: 100vh; }
+#title-screen {
+  position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  background: radial-gradient(ellipse at center, #0a0a2e 0%, #050510 70%);
+  z-index: 10; transition: opacity 0.8s ease;
+}
+#title-screen.hidden { opacity: 0; pointer-events: none; }
+#title-screen h1 {
+  font-size: 4rem; color: #0ff;
+  text-shadow: 0 0 20px #0ff, 0 0 40px #0af, 0 0 80px rgba(0,255,200,0.3);
+  letter-spacing: 0.3em; margin-bottom: 1rem;
+  animation: titlePulse 3s ease-in-out infinite;
+}
+@keyframes titlePulse {
+  0%,100% { text-shadow: 0 0 20px #0ff, 0 0 40px #0af, 0 0 80px rgba(0,255,200,0.3); }
+  50% { text-shadow: 0 0 30px #0ff, 0 0 60px #0af, 0 0 120px rgba(0,255,200,0.5); }
+}
+#title-screen .subtitle {
+  font-size: 1rem; color: #8ff; opacity: 0.7; margin-bottom: 3rem;
+}
+#title-screen .prompt {
+  font-size: 1.2rem; color: #0f8;
+  text-shadow: 0 0 10px #0f8, 0 0 30px rgba(0,255,136,0.4);
+  animation: promptPulse 2s ease-in-out infinite;
+}
+@keyframes promptPulse {
+  0%,100% { opacity: 1; text-shadow: 0 0 10px #0f8, 0 0 30px rgba(0,255,136,0.4); }
+  50% { opacity: 0.4; text-shadow: 0 0 5px #0f8, 0 0 15px rgba(0,255,136,0.2); }
+}
+#title-canvas {
+  position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: -1;
+}
+#title-screen .ufo-silhouette {
+  width: 120px; height: 30px; margin-bottom: 2rem; position: relative;
+}
+#title-screen .ufo-silhouette::before {
+  content: ''; position: absolute; left: 50%; top: 50%;
+  transform: translate(-50%,-50%);
+  width: 100px; height: 20px; border-radius: 50%;
+  background: radial-gradient(ellipse, rgba(0,255,200,0.15) 0%, transparent 70%);
+  box-shadow: 0 0 40px rgba(0,255,200,0.1);
+}
+#title-screen .ufo-silhouette::after {
+  content: ''; position: absolute; left: 50%; top: 30%;
+  transform: translate(-50%,-50%);
+  width: 40px; height: 12px; border-radius: 50%;
+  background: rgba(0,255,255,0.08);
+  box-shadow: 0 0 20px rgba(0,255,255,0.1);
+}
+</style>
+</head>
+<body>
+<div id="title-screen">
+  <canvas id="title-canvas"></canvas>
+  <h1>U.F.O.</h1>
+  <div class="subtitle">FLIGHT SIMULATOR</div>
+  <div class="ufo-silhouette"></div>
+  <div class="prompt">Press ENTER to fly</div>
+</div>
+<canvas id="canvas"></canvas>
+<script>
+// ============================================================
+// CONSTANTS
+// ============================================================
+const BG_COLOR = '#050510';
+const STAR_COUNT = 600;
+const STAR_SPREAD = 3000;
+const GRID_STEP = 40;
+const GRID_COLOR_1 = '#0f6';
+const GRID_COLOR_2 = '#a0f';
+const GRID_Y = 0;
+
+const MAX_SPEED = 300;
+const BOOST_MULTIPLIER = 1.5;
+const ACCELERATION = 200;
+const DECELERATION = 0.97;
+const YAW_SPEED = 2.0;
+const VERTICAL_SPEED = 150;
+const BANK_FACTOR = 0.4;
+const CAMERA_LERP = 0.04;
+const CAMERA_OFFSET_BACK = 120;
+const CAMERA_OFFSET_UP = 50;
+const FOV = 500;
+const NEAR_CLIP = 1;
+const FAR_CLIP = 2500;
+const FOG_START = 1200;
+const FOG_END = 2500;
+
+const PARTICLE_COUNT = 60;
+const PARTICLE_LIFE = 1.5;
+const SPEED_LINE_COUNT = 60;
+const VIGNETTE_BASE = 0.3;
+const VIGNETTE_BOOST = 0.6;
+
+const HUD_COLOR = 'rgba(0,255,200,0.8)';
+const HUD_DIM = 'rgba(0,255,200,0.4)';
+const CONTROLS_FADE_TIME = 5.0;
+
+const MINIMAP_SIZE = 140;
+const MINIMAP_MARGIN = 15;
+const MINIMAP_RANGE = 800;
+
+// Rotating lights
+const ROTATING_LIGHT_COUNT = 8;
+const ROTATING_LIGHT_RADIUS = 14;
+
+// Screen shake
+let shakeX = 0, shakeY = 0;
+let shakeIntensity = 0;
+let shakeDuration = 0;
+let shakeTimer = 0;
+
+// Boost visual state
+let boostFovOffset = 0;
+let boostCameraOffset = 0;
+let boostTint = 0;
+let prevBoosting = false;
+
+// Dynamic camera lerp
+let currentCameraLerp = CAMERA_LERP;
+
+// Spring-damper for banking
+let rollVelocity = 0;
+const ROLL_SPRING = 40;
+const ROLL_DAMPING = 8;
+
+// ============================================================
+// GLOBALS
+// ============================================================
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+let W, H;
+
+let gameStarted = false;
+let gameTime = 0;
+
+// UFO state
+const ufo = {
+  x: 0, y: 200, z: 0,
+  vx: 0, vy: 0, vz: 0,
+  yaw: 0,
+  roll: 0,
+  speed: 0
+};
+
+// Camera state
+const cam = {
+  x: 0, y: 250, z: -120,
+  targetX: 0, targetY: 250, targetZ: -120,
+  lookX: 0, lookY: 200, lookZ: 0
+};
+
+// Input
+const keys = {};
+
+// Stars
+let stars = [];
+
+// Particles (engine trail)
+let particles = [];
+
+// Speed lines
+let speedLines = [];
+
+// ============================================================
+// MATH UTILITIES
+// ============================================================
+function clamp(v, min, max) { return v < min ? min : v > max ? max : v; }
+function lerp(a, b, t) { return a + (b - a) * t; }
+// 3x3 rotation around Y axis
+function rotateY(x, y, z, angle) {
+  const c = Math.cos(angle), s = Math.sin(angle);
+  return { x: x*c + z*s, y: y, z: -x*s + z*c };
+}
+
+// 3x3 rotation around X axis
+function rotateX(x, y, z, angle) {
+  const c = Math.cos(angle), s = Math.sin(angle);
+  return { x: x, y: y*c - z*s, z: y*s + z*c };
+}
+
+// 3x3 rotation around Z axis
+function rotateZ(x, y, z, angle) {
+  const c = Math.cos(angle), s = Math.sin(angle);
+  return { x: x*c - y*s, y: x*s + y*c, z: z };
+}
+
+// Project 3D world point to 2D screen coords (camera-relative)
+function projectPoint(wx, wy, wz) {
+  // Translate to camera space
+  let dx = wx - cam.x;
+  let dy = wy - cam.y;
+  let dz = wz - cam.z;
+
+  // Calculate camera yaw from camera to look target
+  const camYaw = Math.atan2(cam.lookX - cam.x, cam.lookZ - cam.z);
+  const camPitch = Math.atan2(cam.lookY - cam.y,
+    Math.sqrt((cam.lookX - cam.x)**2 + (cam.lookZ - cam.z)**2));
+
+  // Rotate by negative camera yaw
+  const ry = rotateY(dx, dy, dz, -camYaw);
+  // Rotate by negative camera pitch
+  const rx = rotateX(ry.x, ry.y, ry.z, camPitch);
+
+  if (rx.z < NEAR_CLIP) return null; // Behind camera
+  if (rx.z > FAR_CLIP) return null;
+
+  const effectiveFov = FOV + boostFovOffset;
+  const scale = effectiveFov / rx.z;
+  const sx = W / 2 + rx.x * scale + shakeX;
+  const sy = H / 2 - rx.y * scale + shakeY;
+
+  // Fog factor
+  const fogDist = rx.z;
+  let fog = 1.0;
+  if (fogDist > FOG_START) {
+    fog = 1.0 - clamp((fogDist - FOG_START) / (FOG_END - FOG_START), 0, 1);
+  }
+
+  return { x: sx, y: sy, z: rx.z, scale: scale, fog: fog };
+}
+
+// ============================================================
+// INITIALIZATION
+// ============================================================
+function resize() {
+  W = window.innerWidth;
+  H = window.innerHeight;
+  canvas.width = W;
+  canvas.height = H;
+}
+
+function initStars() {
+  stars = [];
+  for (let i = 0; i < STAR_COUNT; i++) {
+    stars.push({
+      x: (Math.random() - 0.5) * STAR_SPREAD * 2,
+      y: Math.random() * STAR_SPREAD * 0.5 + 50,
+      z: (Math.random() - 0.5) * STAR_SPREAD * 2,
+      brightness: Math.random() * 0.7 + 0.3,
+      size: Math.random() * 1.5 + 0.5
+    });
+  }
+}
+
+function initSpeedLines() {
+  speedLines = [];
+  for (let i = 0; i < SPEED_LINE_COUNT; i++) {
+    speedLines.push({
+      angle: Math.random() * Math.PI * 2,
+      radius: 0.3 + Math.random() * 0.2,
+      length: 0.03 + Math.random() * 0.07,
+      opacity: 0
+    });
+  }
+}
+
+function init() {
+  resize();
+  initStars();
+  initSpeedLines();
+  window.addEventListener('resize', resize);
+  window.addEventListener('keydown', e => {
+    keys[e.code] = true;
+    if (e.code === 'Enter' && !gameStarted) {
+      gameStarted = true;
+      document.getElementById('title-screen').classList.add('hidden');
+    }
+    e.preventDefault();
+  });
+  window.addEventListener('keyup', e => { keys[e.code] = false; e.preventDefault(); });
+}
+
+// ============================================================
+// UFO MODEL (3D vertices and faces)
+// ============================================================
+// Disc shape: upper dome + flat bottom ring
+function generateUFOModel() {
+  const verts = [];
+  const edges = [];
+  const faces = [];
+  const segments = 16;
+  const radius = 18;
+  const domeHeight = 6;
+  const bodyHeight = 3;
+
+  // Bottom ring
+  for (let i = 0; i < segments; i++) {
+    const a = (i / segments) * Math.PI * 2;
+    verts.push({ x: Math.cos(a) * radius, y: -bodyHeight, z: Math.sin(a) * radius });
+  }
+  // Top ring (slightly smaller)
+  for (let i = 0; i < segments; i++) {
+    const a = (i / segments) * Math.PI * 2;
+    verts.push({ x: Math.cos(a) * radius * 0.95, y: 0, z: Math.sin(a) * radius * 0.95 });
+  }
+  // Dome ring
+  for (let i = 0; i < segments; i++) {
+    const a = (i / segments) * Math.PI * 2;
+    verts.push({ x: Math.cos(a) * radius * 0.5, y: domeHeight, z: Math.sin(a) * radius * 0.5 });
+  }
+  // Dome top
+  verts.push({ x: 0, y: domeHeight + 3, z: 0 });
+  const topIdx = verts.length - 1;
+
+  // Bottom ring edges
+  for (let i = 0; i < segments; i++) {
+    edges.push([i, (i + 1) % segments]);
+  }
+  // Top ring edges
+  for (let i = 0; i < segments; i++) {
+    edges.push([segments + i, segments + (i + 1) % segments]);
+  }
+  // Vertical edges (bottom to top ring)
+  for (let i = 0; i < segments; i += 2) {
+    edges.push([i, segments + i]);
+  }
+  // Dome ring edges
+  for (let i = 0; i < segments; i++) {
+    edges.push([2 * segments + i, 2 * segments + (i + 1) % segments]);
+  }
+  // Dome vertical edges (top ring to dome ring)
+  for (let i = 0; i < segments; i += 2) {
+    edges.push([segments + i, 2 * segments + i]);
+  }
+  // Dome top edges
+  for (let i = 0; i < segments; i += 2) {
+    edges.push([2 * segments + i, topIdx]);
+  }
+
+  // Filled faces for solid rendering (bottom disc)
+  for (let i = 0; i < segments; i++) {
+    const next = (i + 1) % segments;
+    faces.push([i, next, segments + next, segments + i]);
+  }
+
+  return { verts, edges, faces };
+}
+
+const ufoModel = generateUFOModel();
+
+// ============================================================
+// UPDATE
+// ============================================================
+function update(dt) {
+  if (!gameStarted) return;
+  gameTime += dt;
+
+  const boosting = keys['ShiftLeft'] || keys['ShiftRight'];
+  const accelMult = boosting ? BOOST_MULTIPLIER : 1.0;
+
+  // Yaw (turning)
+  if (keys['KeyA'] || keys['ArrowLeft']) {
+    ufo.yaw += YAW_SPEED * dt;
+  }
+  if (keys['KeyD'] || keys['ArrowRight']) {
+    ufo.yaw -= YAW_SPEED * dt;
+  }
+
+  // Forward direction
+  const forwardX = Math.sin(ufo.yaw);
+  const forwardZ = Math.cos(ufo.yaw);
+
+  // Acceleration
+  if (keys['KeyW'] || keys['ArrowUp']) {
+    ufo.vx += forwardX * ACCELERATION * accelMult * dt;
+    ufo.vz += forwardZ * ACCELERATION * accelMult * dt;
+  }
+  if (keys['KeyS'] || keys['ArrowDown']) {
+    ufo.vx -= forwardX * ACCELERATION * 0.5 * dt;
+    ufo.vz -= forwardZ * ACCELERATION * 0.5 * dt;
+  }
+
+  // Vertical
+  if (keys['KeyQ']) {
+    ufo.vy += VERTICAL_SPEED * dt;
+  }
+  if (keys['KeyE']) {
+    ufo.vy -= VERTICAL_SPEED * dt;
+  }
+
+  // Apply deceleration (drag)
+  ufo.vx *= Math.pow(DECELERATION, dt * 60);
+  ufo.vy *= Math.pow(DECELERATION, dt * 60);
+  ufo.vz *= Math.pow(DECELERATION, dt * 60);
+
+  // Clamp speed
+  const hSpeed = Math.sqrt(ufo.vx * ufo.vx + ufo.vz * ufo.vz);
+  const maxSpd = boosting ? MAX_SPEED * BOOST_MULTIPLIER : MAX_SPEED;
+  if (hSpeed > maxSpd) {
+    const ratio = maxSpd / hSpeed;
+    ufo.vx *= ratio;
+    ufo.vz *= ratio;
+  }
+  ufo.vy = clamp(ufo.vy, -VERTICAL_SPEED, VERTICAL_SPEED);
+
+  // Update position
+  ufo.x += ufo.vx * dt;
+  ufo.y += ufo.vy * dt;
+  ufo.z += ufo.vz * dt;
+
+  // Ground clamp (hover at y = 15 minimum)
+  if (ufo.y < 15) {
+    ufo.y = 15;
+    ufo.vy = Math.max(ufo.vy, 0);
+  }
+
+  // Compute speed scalar
+  ufo.speed = Math.sqrt(ufo.vx * ufo.vx + ufo.vy * ufo.vy + ufo.vz * ufo.vz);
+
+  // Banking (roll based on lateral velocity relative to facing)
+  const rightX = Math.cos(ufo.yaw);
+  const rightZ = -Math.sin(ufo.yaw);
+  const lateralVel = ufo.vx * rightX + ufo.vz * rightZ;
+  const targetRoll = -clamp(lateralVel / MAX_SPEED, -1, 1) * BANK_FACTOR;
+
+  // Also bank when turning
+  let turnBank = 0;
+  if (keys['KeyA'] || keys['ArrowLeft']) turnBank += BANK_FACTOR * 0.8;
+  if (keys['KeyD'] || keys['ArrowRight']) turnBank -= BANK_FACTOR * 0.8;
+
+  const finalTargetRoll = clamp(targetRoll + turnBank, -BANK_FACTOR * 1.5, BANK_FACTOR * 1.5);
+  // Spring-damper banking (overshoot + settle)
+  const rollError = finalTargetRoll - ufo.roll;
+  const springForce = rollError * ROLL_SPRING;
+  const dampForce = -rollVelocity * ROLL_DAMPING;
+  rollVelocity += (springForce + dampForce) * dt;
+  ufo.roll += rollVelocity * dt;
+
+  // Screen shake
+  if (boosting && !prevBoosting) {
+    shakeIntensity = 3;
+    shakeDuration = 0.3;
+    shakeTimer = 0;
+  }
+  if (ufo.y < 30) {
+    const groundProx = 1 - (ufo.y - 15) / 15;
+    shakeIntensity = Math.max(shakeIntensity, groundProx * 2 * (ufo.speed / MAX_SPEED));
+    shakeDuration = Math.max(shakeDuration, 0.1);
+  }
+  if (shakeTimer < shakeDuration) {
+    shakeTimer += dt;
+    const decay = 1 - shakeTimer / shakeDuration;
+    shakeX = (Math.random() - 0.5) * 2 * shakeIntensity * decay;
+    shakeY = (Math.random() - 0.5) * 2 * shakeIntensity * decay;
+  } else {
+    shakeX = 0;
+    shakeY = 0;
+    shakeIntensity = 0;
+  }
+  prevBoosting = boosting;
+
+  // Boost visual interpolation
+  const targetBoostFov = boosting ? 60 : 0;
+  const targetBoostCam = boosting ? 30 : 0;
+  const targetBoostTint = boosting ? 0.08 : 0;
+  boostFovOffset = lerp(boostFovOffset, targetBoostFov, 3 * dt);
+  boostCameraOffset = lerp(boostCameraOffset, targetBoostCam, 3 * dt);
+  boostTint = lerp(boostTint, targetBoostTint, 4 * dt);
+
+  // Dynamic camera lerp
+  const turning = keys['KeyA'] || keys['ArrowLeft'] || keys['KeyD'] || keys['ArrowRight'];
+  const targetLerp = boosting ? 0.02 : (turning ? 0.06 : 0.04);
+  currentCameraLerp = lerp(currentCameraLerp, targetLerp, 3 * dt);
+
+  // Camera follow
+  const effectiveCamBack = CAMERA_OFFSET_BACK + boostCameraOffset;
+  cam.targetX = ufo.x - forwardX * effectiveCamBack;
+  cam.targetY = ufo.y + CAMERA_OFFSET_UP;
+  cam.targetZ = ufo.z - forwardZ * effectiveCamBack;
+
+  cam.x = lerp(cam.x, cam.targetX, currentCameraLerp);
+  cam.y = lerp(cam.y, cam.targetY, currentCameraLerp);
+  cam.z = lerp(cam.z, cam.targetZ, currentCameraLerp);
+
+  cam.lookX = lerp(cam.lookX, ufo.x, 0.08);
+  cam.lookY = lerp(cam.lookY, ufo.y, 0.08);
+  cam.lookZ = lerp(cam.lookZ, ufo.z, 0.08);
+
+  // Wrap stars around camera
+  for (const star of stars) {
+    const dx = star.x - cam.x;
+    const dz = star.z - cam.z;
+    if (dx > STAR_SPREAD) star.x -= STAR_SPREAD * 2;
+    if (dx < -STAR_SPREAD) star.x += STAR_SPREAD * 2;
+    if (dz > STAR_SPREAD) star.z -= STAR_SPREAD * 2;
+    if (dz < -STAR_SPREAD) star.z += STAR_SPREAD * 2;
+  }
+
+  // Update particles
+  updateParticles(dt);
+
+  // Update speed lines
+  const speedRatio = ufo.speed / MAX_SPEED;
+  for (const sl of speedLines) {
+    sl.opacity = speedRatio > 0.5 ? (speedRatio - 0.5) * 2.0 : 0;
+    if (boosting) sl.opacity = Math.min(sl.opacity * 1.5, 1.0);
+  }
+}
+
+// ============================================================
+// PARTICLES
+// ============================================================
+function spawnParticle() {
+  const spread = 8;
+  const backX = -Math.sin(ufo.yaw);
+  const backZ = -Math.cos(ufo.yaw);
+  particles.push({
+    x: ufo.x + backX * 12 + (Math.random() - 0.5) * spread,
+    y: ufo.y - 5 + (Math.random() - 0.5) * 3,
+    z: ufo.z + backZ * 12 + (Math.random() - 0.5) * spread,
+    vx: backX * (30 + Math.random() * 20) + (Math.random() - 0.5) * 10,
+    vy: (Math.random() - 0.5) * 10 - 5,
+    vz: backZ * (30 + Math.random() * 20) + (Math.random() - 0.5) * 10,
+    life: PARTICLE_LIFE,
+    maxLife: PARTICLE_LIFE,
+    size: 2 + Math.random() * 3,
+    hue: 120 + Math.random() * 60 // Green to cyan
+  });
+}
+
+function updateParticles(dt) {
+  const boosting = keys['ShiftLeft'] || keys['ShiftRight'];
+  const spawnRate = ufo.speed > 10 ? (boosting ? 5 : 2) : 0;
+
+  for (let i = 0; i < spawnRate; i++) {
+    if (particles.length < PARTICLE_COUNT * (boosting ? 3 : 1)) {
+      spawnParticle();
+    }
+  }
+
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.z += p.vz * dt;
+    p.life -= dt;
+    if (p.life <= 0) {
+      particles.splice(i, 1);
+    }
+  }
+}
+
+// ============================================================
+// RENDERING
+// ============================================================
+function render() {
+  ctx.fillStyle = BG_COLOR;
+  ctx.fillRect(0, 0, W, H);
+
+  if (!gameStarted) return;
+
+  renderStars();
+  renderGrid();
+  renderHorizonGlow();
+  renderParticles();
+  renderUFO();
+  renderSpeedLines();
+  renderVignette();
+  renderBoostTint();
+  renderHUD();
+}
+
+// ---- Stars ----
+function renderStars() {
+  for (const star of stars) {
+    const p = projectPoint(star.x, star.y, star.z);
+    if (!p) continue;
+    if (p.x < -10 || p.x > W + 10 || p.y < -10 || p.y > H + 10) continue;
+
+    const alpha = star.brightness * p.fog;
+    if (alpha < 0.01) continue;
+    const size = star.size * clamp(p.scale * 2, 0.5, 3);
+
+    ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, size, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+// ---- Grid (Tron-style ground plane) ----
+function renderGrid() {
+  const gridRange = 40; // number of lines each direction from UFO
+  const baseX = Math.round(ufo.x / GRID_STEP) * GRID_STEP;
+  const baseZ = Math.round(ufo.z / GRID_STEP) * GRID_STEP;
+
+  ctx.lineWidth = 1;
+
+  // Draw grid lines along X
+  for (let i = -gridRange; i <= gridRange; i++) {
+    const gz = baseZ + i * GRID_STEP;
+    const x1 = baseX - gridRange * GRID_STEP;
+    const x2 = baseX + gridRange * GRID_STEP;
+
+    const p1 = projectPoint(x1, GRID_Y, gz);
+    const p2 = projectPoint(x2, GRID_Y, gz);
+    if (!p1 || !p2) continue;
+
+    const avgFog = (p1.fog + p2.fog) / 2;
+    if (avgFog < 0.01) continue;
+
+    const color = i % 4 === 0 ? GRID_COLOR_2 : GRID_COLOR_1;
+    const alpha = avgFog * (i % 4 === 0 ? 0.5 : 0.25);
+    ctx.strokeStyle = color;
+    ctx.globalAlpha = alpha;
+    ctx.beginPath();
+    ctx.moveTo(p1.x, p1.y);
+    ctx.lineTo(p2.x, p2.y);
+    ctx.stroke();
+  }
+
+  // Draw grid lines along Z
+  for (let i = -gridRange; i <= gridRange; i++) {
+    const gx = baseX + i * GRID_STEP;
+    const z1 = baseZ - gridRange * GRID_STEP;
+    const z2 = baseZ + gridRange * GRID_STEP;
+
+    const p1 = projectPoint(gx, GRID_Y, z1);
+    const p2 = projectPoint(gx, GRID_Y, z2);
+    if (!p1 || !p2) continue;
+
+    const avgFog = (p1.fog + p2.fog) / 2;
+    if (avgFog < 0.01) continue;
+
+    const color = i % 4 === 0 ? GRID_COLOR_2 : GRID_COLOR_1;
+    const alpha = avgFog * (i % 4 === 0 ? 0.5 : 0.25);
+    ctx.strokeStyle = color;
+    ctx.globalAlpha = alpha;
+    ctx.beginPath();
+    ctx.moveTo(p1.x, p1.y);
+    ctx.lineTo(p2.x, p2.y);
+    ctx.stroke();
+  }
+
+  ctx.globalAlpha = 1;
+}
+
+// ---- UFO Rendering ----
+function renderUFO() {
+  const projected = [];
+
+  for (const v of ufoModel.verts) {
+    // Apply roll
+    let rv = rotateZ(v.x, v.y, v.z, ufo.roll);
+    // Apply yaw
+    rv = rotateY(rv.x, rv.y, rv.z, ufo.yaw);
+    // Translate to world
+    const wx = ufo.x + rv.x;
+    const wy = ufo.y + rv.y;
+    const wz = ufo.z + rv.z;
+
+    const p = projectPoint(wx, wy, wz);
+    projected.push(p);
+  }
+
+  // Draw rotating lights (under UFO)
+  const lightRotSpeed = 2 + (ufo.speed / MAX_SPEED) * 6;
+  const lightAngleBase = gameTime * lightRotSpeed;
+  for (let i = 0; i < ROTATING_LIGHT_COUNT; i++) {
+    const a = lightAngleBase + (i / ROTATING_LIGHT_COUNT) * Math.PI * 2;
+    const lx = Math.cos(a) * ROTATING_LIGHT_RADIUS;
+    const lz = Math.sin(a) * ROTATING_LIGHT_RADIUS;
+    let rl = rotateZ(lx, -4, lz, ufo.roll);
+    rl = rotateY(rl.x, rl.y, rl.z, ufo.yaw);
+    const lp = projectPoint(ufo.x + rl.x, ufo.y + rl.y, ufo.z + rl.z);
+    if (!lp) continue;
+    const lightSize = 4 * lp.scale;
+    const isGreen = i % 2 === 0;
+    const lColor = isGreen ? '0,255,136' : '0,220,255';
+    const lGrad = ctx.createRadialGradient(lp.x, lp.y, 0, lp.x, lp.y, lightSize);
+    lGrad.addColorStop(0, `rgba(${lColor},${0.9 * lp.fog})`);
+    lGrad.addColorStop(0.5, `rgba(${lColor},${0.3 * lp.fog})`);
+    lGrad.addColorStop(1, `rgba(${lColor},0)`);
+    ctx.fillStyle = lGrad;
+    ctx.beginPath();
+    ctx.arc(lp.x, lp.y, lightSize, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Draw 3-layer engine glow (under UFO)
+  const glowP = projectPoint(ufo.x, ufo.y - 5, ufo.z);
+  if (glowP) {
+    const speedFactor = ufo.speed / MAX_SPEED;
+    const pulse = 1 + Math.sin(gameTime * 6) * 0.15 * speedFactor;
+    const baseGlowSize = (30 + speedFactor * 15) * glowP.scale * pulse;
+    const glowIntensity = 0.3 + speedFactor * 0.5;
+
+    // Outer layer (wide, dim green)
+    const g3 = ctx.createRadialGradient(glowP.x, glowP.y, 0, glowP.x, glowP.y, baseGlowSize * 1.5);
+    g3.addColorStop(0, `rgba(0,150,60,${glowIntensity * 0.15 * glowP.fog})`);
+    g3.addColorStop(1, 'rgba(0,150,60,0)');
+    ctx.fillStyle = g3;
+    ctx.beginPath();
+    ctx.arc(glowP.x, glowP.y, baseGlowSize * 1.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Mid layer (neon green)
+    const g2 = ctx.createRadialGradient(glowP.x, glowP.y, 0, glowP.x, glowP.y, baseGlowSize);
+    g2.addColorStop(0, `rgba(0,255,100,${glowIntensity * 0.5 * glowP.fog})`);
+    g2.addColorStop(0.6, `rgba(0,200,80,${glowIntensity * 0.2 * glowP.fog})`);
+    g2.addColorStop(1, 'rgba(0,200,80,0)');
+    ctx.fillStyle = g2;
+    ctx.beginPath();
+    ctx.arc(glowP.x, glowP.y, baseGlowSize, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Inner layer (bright white-green core)
+    const g1 = ctx.createRadialGradient(glowP.x, glowP.y, 0, glowP.x, glowP.y, baseGlowSize * 0.3);
+    g1.addColorStop(0, `rgba(200,255,220,${glowIntensity * 0.7 * glowP.fog})`);
+    g1.addColorStop(1, `rgba(0,255,100,0)`);
+    ctx.fillStyle = g1;
+    ctx.beginPath();
+    ctx.arc(glowP.x, glowP.y, baseGlowSize * 0.3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Draw filled faces (bottom disc panels)
+  for (const face of ufoModel.faces) {
+    const pts = face.map(i => projected[i]);
+    if (pts.some(p => !p)) continue;
+
+    const alpha = clamp(0.15 * pts[0].fog, 0, 0.15);
+
+    ctx.fillStyle = `rgba(0,180,255,${alpha})`;
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length; i++) {
+      ctx.lineTo(pts[i].x, pts[i].y);
+    }
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // Draw wireframe edges (glow scales with speed)
+  const wireGlow = 4 + (ufo.speed / MAX_SPEED) * 12;
+  ctx.lineWidth = 1.5;
+  ctx.shadowColor = 'rgba(0,220,255,0.6)';
+  ctx.shadowBlur = wireGlow;
+  for (const edge of ufoModel.edges) {
+    const p1 = projected[edge[0]];
+    const p2 = projected[edge[1]];
+    if (!p1 || !p2) continue;
+
+    const alpha = Math.min(p1.fog, p2.fog);
+    if (alpha < 0.01) continue;
+
+    ctx.strokeStyle = `rgba(0,220,255,${alpha * 0.8})`;
+    ctx.beginPath();
+    ctx.moveTo(p1.x, p1.y);
+    ctx.lineTo(p2.x, p2.y);
+    ctx.stroke();
+  }
+  ctx.shadowBlur = 0;
+
+  // Draw dome highlight
+  const domeP = projectPoint(ufo.x, ufo.y + 9, ufo.z);
+  if (domeP) {
+    const domeSize = 5 * domeP.scale;
+    const grad = ctx.createRadialGradient(domeP.x, domeP.y - domeSize * 0.3, 0, domeP.x, domeP.y, domeSize);
+    grad.addColorStop(0, `rgba(100,220,255,${0.4 * domeP.fog})`);
+    grad.addColorStop(1, 'rgba(100,220,255,0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(domeP.x, domeP.y, domeSize, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+// ---- Particles ----
+function renderParticles() {
+  for (const p of particles) {
+    const proj = projectPoint(p.x, p.y, p.z);
+    if (!proj) continue;
+
+    const lifeRatio = p.life / p.maxLife;
+    const alpha = lifeRatio * proj.fog;
+    if (alpha < 0.01) continue;
+    const size = p.size * lifeRatio * clamp(proj.scale * 3, 0.5, 5);
+
+    ctx.fillStyle = `hsla(${p.hue},100%,60%,${alpha})`;
+    ctx.beginPath();
+    ctx.arc(proj.x, proj.y, size, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+// ---- Speed Lines ----
+function renderSpeedLines() {
+  const cx = W / 2;
+  const cy = H / 2;
+  const boostStretch = 1 + boostFovOffset / 40;
+
+  for (const sl of speedLines) {
+    if (sl.opacity < 0.01) continue;
+
+    const r1 = sl.radius * Math.min(W, H);
+    const effectiveLen = sl.length * boostStretch;
+    const r2 = (sl.radius + effectiveLen) * Math.min(W, H);
+    const x1 = cx + Math.cos(sl.angle) * r1;
+    const y1 = cy + Math.sin(sl.angle) * r1;
+    const x2 = cx + Math.cos(sl.angle) * r2;
+    const y2 = cy + Math.sin(sl.angle) * r2;
+
+    ctx.strokeStyle = `rgba(200,240,255,${sl.opacity * 0.4})`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+  }
+}
+
+// ---- Vignette ----
+function renderVignette() {
+  const boosting = keys['ShiftLeft'] || keys['ShiftRight'];
+  const intensity = boosting ? VIGNETTE_BOOST : VIGNETTE_BASE;
+
+  const grad = ctx.createRadialGradient(W/2, H/2, Math.min(W,H) * 0.3, W/2, H/2, Math.max(W,H) * 0.7);
+  grad.addColorStop(0, 'rgba(0,0,0,0)');
+  grad.addColorStop(1, `rgba(0,0,0,${intensity})`);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+}
+
+// ---- Horizon Glow ----
+function renderHorizonGlow() {
+  const horizonP = projectPoint(ufo.x, GRID_Y, ufo.z + 800);
+  if (!horizonP) return;
+  const horizonY = clamp(horizonP.y, H * 0.3, H * 0.85);
+  const grad = ctx.createLinearGradient(0, horizonY - 60, 0, horizonY + 40);
+  grad.addColorStop(0, 'rgba(0,255,100,0)');
+  grad.addColorStop(0.4, 'rgba(0,255,100,0.04)');
+  grad.addColorStop(0.6, 'rgba(100,50,255,0.03)');
+  grad.addColorStop(1, 'rgba(100,50,255,0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, horizonY - 60, W, 100);
+}
+
+// ---- Boost Tint ----
+function renderBoostTint() {
+  if (boostTint < 0.005) return;
+  ctx.fillStyle = `rgba(0,180,255,${boostTint})`;
+  ctx.fillRect(0, 0, W, H);
+}
+
+// ---- HUD ----
+function renderHUD() {
+  ctx.save();
+
+  // Speed meter (left bottom)
+  const meterX = 30;
+  const meterY = H - 50;
+  const meterW = 180;
+  const meterH = 12;
+  const speedRatio = ufo.speed / (MAX_SPEED * BOOST_MULTIPLIER);
+
+  ctx.strokeStyle = HUD_DIM;
+  ctx.lineWidth = 1;
+  ctx.strokeRect(meterX, meterY, meterW, meterH);
+
+  const barGrad = ctx.createLinearGradient(meterX, 0, meterX + meterW, 0);
+  barGrad.addColorStop(0, 'rgba(0,255,200,0.6)');
+  barGrad.addColorStop(0.66, 'rgba(0,255,100,0.6)');
+  barGrad.addColorStop(1, 'rgba(255,100,0,0.8)');
+  ctx.fillStyle = barGrad;
+  ctx.fillRect(meterX + 1, meterY + 1, (meterW - 2) * speedRatio, meterH - 2);
+
+  ctx.fillStyle = HUD_COLOR;
+  ctx.font = '11px Courier New';
+  ctx.fillText('SPEED', meterX, meterY - 6);
+  ctx.fillText(`${Math.round(ufo.speed)} / ${Math.round(MAX_SPEED * BOOST_MULTIPLIER)}`, meterX + meterW + 10, meterY + 11);
+
+  // Boost indicator
+  if (keys['ShiftLeft'] || keys['ShiftRight']) {
+    ctx.fillStyle = 'rgba(255,150,0,0.9)';
+    ctx.font = 'bold 13px Courier New';
+    ctx.fillText('BOOST', meterX + meterW + 80, meterY + 11);
+  }
+
+  // Altitude (right bottom)
+  const altX = W - 160;
+  const altY = H - 50;
+  ctx.fillStyle = HUD_COLOR;
+  ctx.font = '11px Courier New';
+  ctx.fillText('ALT', altX, altY - 6);
+  ctx.font = '20px Courier New';
+  ctx.fillText(`${Math.round(ufo.y)}m`, altX, altY + 14);
+
+  // Heading
+  const heading = ((ufo.yaw * 180 / Math.PI) % 360 + 360) % 360;
+  ctx.font = '11px Courier New';
+  ctx.fillText(`HDG ${Math.round(heading)}`, altX, altY + 32);
+
+  // Minimap (top right)
+  renderMinimap();
+
+  // Controls guide (fades after 5 seconds)
+  if (gameTime < CONTROLS_FADE_TIME + 2) {
+    const fadeAlpha = gameTime < CONTROLS_FADE_TIME ? 0.7 : Math.max(0, 0.7 * (1 - (gameTime - CONTROLS_FADE_TIME) / 2));
+    if (fadeAlpha > 0.01) {
+      ctx.globalAlpha = fadeAlpha;
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      const guideW = 500;
+      const guideH = 32;
+      const guideX = (W - guideW) / 2;
+      const guideY = H - 100;
+      ctx.fillRect(guideX, guideY, guideW, guideH);
+      ctx.strokeStyle = HUD_DIM;
+      ctx.strokeRect(guideX, guideY, guideW, guideH);
+      ctx.fillStyle = HUD_COLOR;
+      ctx.font = '11px Courier New';
+      ctx.fillText('W/S:Thrust  A/D:Yaw  Q/E:Up/Down  Shift:Boost', guideX + 15, guideY + 20);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  ctx.restore();
+}
+
+// ---- Minimap ----
+function renderMinimap() {
+  const mx = W - MINIMAP_SIZE - MINIMAP_MARGIN;
+  const my = MINIMAP_MARGIN;
+
+  // Background
+  ctx.fillStyle = 'rgba(0,10,20,0.7)';
+  ctx.fillRect(mx, my, MINIMAP_SIZE, MINIMAP_SIZE);
+  ctx.strokeStyle = HUD_DIM;
+  ctx.lineWidth = 1;
+  ctx.strokeRect(mx, my, MINIMAP_SIZE, MINIMAP_SIZE);
+
+  // Grid on minimap
+  const cx = mx + MINIMAP_SIZE / 2;
+  const cy = my + MINIMAP_SIZE / 2;
+  const scale = MINIMAP_SIZE / (MINIMAP_RANGE * 2);
+
+  // Grid lines
+  ctx.strokeStyle = 'rgba(0,255,100,0.15)';
+  const gridStep = 200;
+  const gridCount = Math.ceil(MINIMAP_RANGE / gridStep);
+  for (let i = -gridCount; i <= gridCount; i++) {
+    const offset = i * gridStep * scale;
+    // Horizontal
+    ctx.beginPath();
+    ctx.moveTo(mx, cy + offset);
+    ctx.lineTo(mx + MINIMAP_SIZE, cy + offset);
+    ctx.stroke();
+    // Vertical
+    ctx.beginPath();
+    ctx.moveTo(cx + offset, my);
+    ctx.lineTo(cx + offset, my + MINIMAP_SIZE);
+    ctx.stroke();
+  }
+
+  // UFO position (always at center, map rotates)
+  // Draw direction indicator
+  const dirLen = 10;
+  const dirX = Math.sin(ufo.yaw) * dirLen;
+  const dirZ = Math.cos(ufo.yaw) * dirLen;
+
+  ctx.strokeStyle = 'rgba(0,255,200,0.9)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(cx + dirX, cy - dirZ);
+  ctx.stroke();
+
+  // UFO dot
+  ctx.fillStyle = '#0ff';
+  ctx.beginPath();
+  ctx.arc(cx, cy, 3, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Label
+  ctx.fillStyle = HUD_DIM;
+  ctx.font = '9px Courier New';
+  ctx.fillText('MAP', mx + 4, my + 11);
+}
+
+// ============================================================
+// GAME LOOP
+// ============================================================
+let lastTime = 0;
+
+function gameLoop(timestamp) {
+  const dt = lastTime ? Math.min((timestamp - lastTime) / 1000, 0.05) : 0.016;
+  lastTime = timestamp;
+
+  update(dt);
+  render();
+
+  requestAnimationFrame(gameLoop);
+}
+
+// ============================================================
+// TITLE SCREEN ANIMATION
+// ============================================================
+const titleCanvas = document.getElementById('title-canvas');
+const tCtx = titleCanvas.getContext('2d');
+const titleStars = [];
+const TITLE_STAR_COUNT = 200;
+
+function initTitleScreen() {
+  titleCanvas.width = window.innerWidth;
+  titleCanvas.height = window.innerHeight;
+  for (let i = 0; i < TITLE_STAR_COUNT; i++) {
+    titleStars.push({
+      x: Math.random() * titleCanvas.width,
+      y: Math.random() * titleCanvas.height,
+      size: Math.random() * 2 + 0.5,
+      speed: 0.2 + Math.random() * 0.6,
+      brightness: Math.random() * 0.6 + 0.2
+    });
+  }
+}
+
+function renderTitleScreen(time) {
+  if (gameStarted) { tCtx.clearRect(0, 0, titleCanvas.width, titleCanvas.height); return; }
+  const tw = titleCanvas.width;
+  const th = titleCanvas.height;
+  tCtx.clearRect(0, 0, tw, th);
+
+  // Flowing stars
+  for (const s of titleStars) {
+    s.y += s.speed;
+    if (s.y > th) { s.y = 0; s.x = Math.random() * tw; }
+    const twinkle = 0.7 + Math.sin(time * 0.002 + s.x) * 0.3;
+    tCtx.fillStyle = `rgba(200,220,255,${s.brightness * twinkle})`;
+    tCtx.beginPath();
+    tCtx.arc(s.x, s.y, s.size, 0, Math.PI * 2);
+    tCtx.fill();
+  }
+
+  // UFO silhouette on Canvas (disc + dome, centered above title)
+  const cx = tw / 2;
+  const cy = th * 0.28;
+  const hover = Math.sin(time * 0.0015) * 6;
+
+  // Engine glow beneath
+  const eGrad = tCtx.createRadialGradient(cx, cy + hover + 12, 0, cx, cy + hover + 12, 60);
+  eGrad.addColorStop(0, 'rgba(0,255,136,0.12)');
+  eGrad.addColorStop(0.5, 'rgba(0,255,136,0.04)');
+  eGrad.addColorStop(1, 'rgba(0,255,136,0)');
+  tCtx.fillStyle = eGrad;
+  tCtx.beginPath();
+  tCtx.arc(cx, cy + hover + 12, 60, 0, Math.PI * 2);
+  tCtx.fill();
+
+  // Disc body
+  tCtx.save();
+  tCtx.translate(cx, cy + hover);
+  tCtx.strokeStyle = 'rgba(0,220,255,0.25)';
+  tCtx.lineWidth = 1.5;
+  tCtx.shadowColor = 'rgba(0,220,255,0.3)';
+  tCtx.shadowBlur = 8;
+
+  // Bottom ellipse
+  tCtx.beginPath();
+  tCtx.ellipse(0, 4, 50, 10, 0, 0, Math.PI * 2);
+  tCtx.stroke();
+
+  // Top ellipse
+  tCtx.beginPath();
+  tCtx.ellipse(0, 0, 48, 9, 0, 0, Math.PI * 2);
+  tCtx.stroke();
+
+  // Dome
+  tCtx.beginPath();
+  tCtx.ellipse(0, -4, 22, 8, 0, Math.PI, 0);
+  tCtx.stroke();
+
+  // Dome top
+  tCtx.beginPath();
+  tCtx.arc(0, -12, 3, 0, Math.PI * 2);
+  tCtx.strokeStyle = 'rgba(100,220,255,0.3)';
+  tCtx.stroke();
+
+  // Rotating lights on title UFO
+  const lightCount = 6;
+  const lightTime = time * 0.003;
+  for (let i = 0; i < lightCount; i++) {
+    const la = lightTime + (i / lightCount) * Math.PI * 2;
+    const lx = Math.cos(la) * 42;
+    const ly = Math.sin(la) * 8 + 3;
+    const isG = i % 2 === 0;
+    tCtx.fillStyle = isG ? 'rgba(0,255,136,0.5)' : 'rgba(0,220,255,0.5)';
+    tCtx.beginPath();
+    tCtx.arc(lx, ly, 2, 0, Math.PI * 2);
+    tCtx.fill();
+  }
+
+  tCtx.restore();
+
+  requestAnimationFrame(renderTitleScreen);
+}
+
+initTitleScreen();
+function titleResize() {
+  if (gameStarted) { window.removeEventListener('resize', titleResize); return; }
+  titleCanvas.width = window.innerWidth;
+  titleCanvas.height = window.innerHeight;
+}
+window.addEventListener('resize', titleResize);
+requestAnimationFrame(renderTitleScreen);
+
+// ============================================================
+// START
+// ============================================================
+init();
+requestAnimationFrame(gameLoop);
+</script>
+</body>
+</html>

@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TSUGIAI - AI-Powered Handover System</title>
+<meta name="description" content="AIエージェントが引き継ぎの惰性を殺す。Google ADK + Gemini で構築されたマルチフェーズ・チェックアウトシステム。">
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      colors: {
+        bg: '#0a0a0f',
+        'bg-light': '#12121a',
+        'bg-card': '#16161f',
+        cyan: '#00d4ff',
+        purple: '#7c3aed',
+        'purple-light': '#a78bfa',
+      },
+      fontFamily: {
+        sans: ['Inter', 'sans-serif'],
+        mono: ['JetBrains Mono', 'monospace'],
+      },
+    },
+  },
+}
+</script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  background-color: #0a0a0f;
+  color: #e2e8f0;
+  font-family: 'Inter', sans-serif;
+  overflow-x: hidden;
+}
+
+/* Grid background */
+.grid-bg {
+  background-image:
+    linear-gradient(rgba(0, 212, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 212, 255, 0.03) 1px, transparent 1px);
+  background-size: 60px 60px;
+}
+
+/* Glow effects */
+.glow-cyan { text-shadow: 0 0 20px rgba(0, 212, 255, 0.5), 0 0 40px rgba(0, 212, 255, 0.3), 0 0 80px rgba(0, 212, 255, 0.1); }
+.glow-purple { text-shadow: 0 0 20px rgba(124, 58, 237, 0.5), 0 0 40px rgba(124, 58, 237, 0.3); }
+.box-glow-cyan { box-shadow: 0 0 15px rgba(0, 212, 255, 0.15), 0 0 30px rgba(0, 212, 255, 0.05); }
+.box-glow-purple { box-shadow: 0 0 15px rgba(124, 58, 237, 0.15), 0 0 30px rgba(124, 58, 237, 0.05); }
+
+/* Glow pulse animation */
+@keyframes glowPulse {
+  0%, 100% { text-shadow: 0 0 20px rgba(0, 212, 255, 0.5), 0 0 40px rgba(0, 212, 255, 0.2); }
+  50% { text-shadow: 0 0 30px rgba(0, 212, 255, 0.8), 0 0 60px rgba(0, 212, 255, 0.4), 0 0 100px rgba(0, 212, 255, 0.2); }
+}
+.glow-pulse { animation: glowPulse 3s ease-in-out infinite; }
+
+/* Scroll arrow bounce */
+@keyframes bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(10px); }
+}
+.bounce { animation: bounce 2s ease-in-out infinite; }
+
+/* Fade in on scroll */
+.fade-section {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.7s ease-out, transform 0.7s ease-out;
+}
+.fade-section.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Code rain */
+@keyframes codeRain {
+  0% { transform: translateY(-100%); opacity: 0; }
+  10% { opacity: 0.08; }
+  90% { opacity: 0.08; }
+  100% { transform: translateY(100vh); opacity: 0; }
+}
+.code-rain-line {
+  position: absolute;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: #00d4ff;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  animation: codeRain linear infinite;
+}
+
+/* Terminal cursor blink */
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+.cursor-blink::after {
+  content: '|';
+  animation: blink 1s step-end infinite;
+  color: #00d4ff;
+}
+
+/* Badge hover */
+.tech-badge {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.tech-badge:hover {
+  transform: scale(1.05);
+  box-shadow: 0 0 20px rgba(0, 212, 255, 0.3);
+}
+
+/* Gradient line */
+.gradient-line {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #00d4ff, #7c3aed, transparent);
+}
+
+/* Sound wave */
+@keyframes soundWave {
+  0%, 100% { height: 8px; }
+  50% { height: 24px; }
+}
+.sound-bar {
+  width: 3px;
+  background: linear-gradient(to top, #00d4ff, #7c3aed);
+  border-radius: 2px;
+  animation: soundWave ease-in-out infinite;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: #0a0a0f; }
+::-webkit-scrollbar-thumb { background: #1e1e2e; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #2a2a3e; }
+
+/* Phase connector */
+.phase-connector {
+  position: relative;
+}
+.phase-connector::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: -24px;
+  width: 24px;
+  height: 2px;
+  background: linear-gradient(90deg, #00d4ff, #7c3aed);
+}
+@media (max-width: 768px) {
+  .phase-connector::after {
+    top: auto;
+    bottom: -24px;
+    right: 50%;
+    width: 2px;
+    height: 24px;
+    background: linear-gradient(180deg, #00d4ff, #7c3aed);
+  }
+}
+.phase-connector:last-child::after {
+  display: none;
+}
+</style>
+</head>
+<body class="grid-bg">
+
+<!-- ============================================ -->
+<!-- HERO SECTION -->
+<!-- ============================================ -->
+<section class="relative min-h-screen flex flex-col items-center justify-center px-4 overflow-hidden">
+  <!-- Code rain background -->
+  <div id="code-rain" class="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true"></div>
+
+  <!-- Gradient overlay -->
+  <div class="absolute inset-0 bg-gradient-to-b from-transparent via-bg/50 to-bg pointer-events-none"></div>
+
+  <!-- Content -->
+  <div class="relative z-10 text-center">
+    <p class="font-mono text-sm text-cyan/60 mb-4 tracking-widest">AI-Powered Handover System</p>
+    <h1 class="text-6xl sm:text-7xl md:text-8xl lg:text-9xl font-black tracking-tighter glow-pulse text-cyan mb-6">
+      TSUGIAI
+    </h1>
+    <p class="text-xl sm:text-2xl md:text-3xl font-light text-gray-300 mb-2">
+      引き継ぎの惰性を、AIが殺す。
+    </p>
+    <p class="text-sm sm:text-base text-gray-500 mt-2">
+      3つのAIエージェントが連携する、マルチフェーズ・チェックアウトシステム
+    </p>
+    <p class="font-mono text-xs text-gray-500 mt-6">$ tsugiai init --agents=3 --phases=4</p>
+  </div>
+
+  <!-- Scroll arrow -->
+  <div class="absolute bottom-10 z-10 bounce">
+    <svg class="w-6 h-6 text-cyan/50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"/>
+    </svg>
+  </div>
+</section>
+
+<!-- ============================================ -->
+<!-- PROBLEM SECTION -->
+<!-- ============================================ -->
+<section class="fade-section py-24 px-4 max-w-5xl mx-auto">
+  <div class="gradient-line mb-16"></div>
+  <h2 class="text-3xl sm:text-4xl font-bold text-center mb-4">
+    シフト交代の引き継ぎは、<span class="text-red-400">なぜ壊れるのか</span>
+  </h2>
+  <p class="text-center text-gray-500 font-mono text-sm mb-12">$ tsugiai diagnose --sector=manufacturing</p>
+
+  <div class="space-y-6">
+    <!-- Problem 1 -->
+    <div class="bg-bg-card border border-red-900/30 rounded-lg p-6">
+      <div class="font-mono text-sm">
+        <span class="text-red-400">$</span> <span class="text-gray-400">analyze --type=</span><span class="text-red-300">communication</span>
+      </div>
+      <div class="mt-3 font-mono text-sm text-red-300/80 pl-4 border-l-2 border-red-900/50">
+        <p class="text-gray-300 font-sans text-base mt-1"><span class="text-red-400 font-bold">ERROR:</span> 口頭伝達への依存 &rarr; 情報伝達不備 &rarr; 事故リスク</p>
+        <p class="text-gray-500 text-xs mt-2 font-mono">// 人間の短期記憶は7&plusmn;2項目。複雑な引き継ぎを口頭だけで？</p>
+      </div>
+    </div>
+
+    <!-- Problem 2 -->
+    <div class="bg-bg-card border border-red-900/30 rounded-lg p-6">
+      <div class="font-mono text-sm">
+        <span class="text-red-400">$</span> <span class="text-gray-400">analyze --type=</span><span class="text-red-300">checklist</span>
+      </div>
+      <div class="mt-3 font-mono text-sm text-red-300/80 pl-4 border-l-2 border-red-900/50">
+        <p class="text-gray-300 font-sans text-base mt-1"><span class="text-red-400 font-bold">ERROR:</span> 紙チェックリストの形骸化 &rarr; 惰性入力 &rarr; 見落とし</p>
+        <p class="text-gray-500 text-xs mt-2 font-mono">// 毎日同じ順序、同じ質問。人は慣れる。慣れは事故を呼ぶ</p>
+      </div>
+    </div>
+
+    <!-- Problem 3 -->
+    <div class="bg-bg-card border border-red-900/30 rounded-lg p-6">
+      <div class="font-mono text-sm">
+        <span class="text-red-400">$</span> <span class="text-gray-400">analyze --type=</span><span class="text-red-300">documentation</span>
+      </div>
+      <div class="mt-3 font-mono text-sm text-red-300/80 pl-4 border-l-2 border-red-900/50">
+        <p class="text-gray-300 font-sans text-base mt-1"><span class="text-red-400 font-bold">ERROR:</span> 引き継ぎ書作成の工数 &rarr; 品質ばらつき &rarr; 属人化</p>
+        <p class="text-gray-500 text-xs mt-2 font-mono">// 作成者によって粒度も構造もバラバラ。再利用不能</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================ -->
+<!-- SOLUTION SECTION -->
+<!-- ============================================ -->
+<section class="fade-section py-24 px-4 max-w-6xl mx-auto">
+  <div class="gradient-line mb-16"></div>
+  <h2 class="text-3xl sm:text-4xl font-bold text-center mb-4">
+    3つのAIエージェントが、<span class="text-cyan">引き継ぎを再構築する</span>
+  </h2>
+  <p class="text-center text-gray-500 font-mono text-sm mb-12">$ tsugiai agents --list</p>
+
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+    <!-- Template Agent -->
+    <div class="bg-bg-card border border-cyan/10 rounded-lg p-6 hover:border-cyan/30 transition-colors box-glow-cyan">
+      <div class="text-3xl mb-3">&#9889;</div>
+      <h3 class="text-xl font-bold text-cyan mb-2">Template Agent</h3>
+      <p class="text-gray-400 text-sm mb-4">業種・職種からチェックリストテンプレートを自動生成。2~3の質問で業種特定、プリセット提案。</p>
+      <div class="bg-bg rounded-md p-3 font-mono text-xs text-gray-400 overflow-x-auto">
+        <pre><span class="text-purple-light">agent</span> = <span class="text-cyan">TemplateAgent</span>(
+  model=<span class="text-green-400">"gemini-3-flash"</span>,
+  tools=[<span class="text-yellow-300">save_template</span>,
+         <span class="text-yellow-300">suggest_items</span>]
+)</pre>
+      </div>
+    </div>
+
+    <!-- Checkout Agent -->
+    <div class="bg-bg-card border border-cyan/10 rounded-lg p-6 hover:border-cyan/30 transition-colors box-glow-cyan">
+      <div class="text-3xl mb-3">&#127919;</div>
+      <h3 class="text-xl font-bold text-cyan mb-2">Checkout Agent</h3>
+      <p class="text-gray-400 text-sm mb-4">チェックリストを1項目ずつAI対話形式で確認。テキスト/音声選択。危険キーワード自動検出&rarr;深掘り。</p>
+      <div class="bg-bg rounded-md p-3 font-mono text-xs text-gray-400 overflow-x-auto">
+        <pre><span class="text-purple-light">agent</span> = <span class="text-cyan">CheckoutAgent</span>(
+  model=<span class="text-green-400">"gemini-3-flash"</span>,
+  tools=[<span class="text-yellow-300">detect_risk</span>,
+         <span class="text-yellow-300">deep_dive</span>]
+)</pre>
+      </div>
+    </div>
+
+    <!-- Handover Agent -->
+    <div class="bg-bg-card border border-cyan/10 rounded-lg p-6 hover:border-cyan/30 transition-colors box-glow-cyan">
+      <div class="text-3xl mb-3">&#128203;</div>
+      <h3 class="text-xl font-bold text-cyan mb-2">Handover Agent</h3>
+      <p class="text-gray-400 text-sm mb-4">対話結果から引き継ぎノート+アクションアイテムを自動生成。セクション自動分類。</p>
+      <div class="bg-bg rounded-md p-3 font-mono text-xs text-gray-400 overflow-x-auto">
+        <pre><span class="text-purple-light">agent</span> = <span class="text-cyan">HandoverAgent</span>(
+  model=<span class="text-green-400">"gemini-3-flash"</span>,
+  tools=[<span class="text-yellow-300">gen_note</span>,
+         <span class="text-yellow-300">classify_section</span>]
+)</pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================ -->
+<!-- FLOW SECTION -->
+<!-- ============================================ -->
+<section class="fade-section py-24 px-4 max-w-6xl mx-auto">
+  <div class="gradient-line mb-16"></div>
+  <h2 class="text-3xl sm:text-4xl font-bold text-center mb-4">
+    <span class="text-cyan">Phase 1</span> &rarr; <span class="text-purple-light">2</span> &rarr; <span class="text-cyan">3</span> &rarr; <span class="text-purple-light">4</span>
+  </h2>
+  <p class="text-center text-gray-500 font-mono text-sm mb-12">$ tsugiai checkout --flow</p>
+
+  <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+    <!-- Phase 1 -->
+    <div class="phase-connector relative bg-bg-card border border-gray-800 rounded-lg p-5">
+      <div class="font-mono text-xs text-cyan mb-2">PHASE_01</div>
+      <h3 class="text-lg font-bold mb-2">Form Input</h3>
+      <p class="text-gray-400 text-sm">フォーム入力。Fisher-Yatesシャッフルでランダム順序表示。パターン化を防止。</p>
+      <div class="mt-3 font-mono text-xs text-gray-600">
+        <span class="text-cyan">$</span> shuffle(items)
+      </div>
+    </div>
+
+    <!-- Phase 2 -->
+    <div class="phase-connector relative bg-bg-card border border-gray-800 rounded-lg p-5">
+      <div class="font-mono text-xs text-purple-light mb-2">PHASE_02</div>
+      <h3 class="text-lg font-bold mb-2">Photo & AI Judge</h3>
+      <p class="text-gray-400 text-sm">写真撮影とAI判定。現場状況を視覚的に記録・検証。</p>
+      <div class="mt-3 font-mono text-xs text-gray-600">
+        <span class="text-purple-light">$</span> judge(photo)
+      </div>
+    </div>
+
+    <!-- Phase 3 (highlighted) -->
+    <div class="phase-connector relative bg-bg-card border border-cyan/30 rounded-lg p-5 box-glow-cyan">
+      <div class="font-mono text-xs text-cyan mb-2">PHASE_03</div>
+      <h3 class="text-lg font-bold text-cyan mb-2">AI Dialogue</h3>
+      <p class="text-gray-400 text-sm">テキスト or Gemini Live音声でAI対話レビュー。危険キーワード自動深掘り。</p>
+      <!-- Sound wave decoration -->
+      <div class="flex items-end gap-1 mt-3 h-6">
+        <div class="sound-bar" style="animation-duration:0.8s;height:12px"></div>
+        <div class="sound-bar" style="animation-duration:0.6s;height:18px"></div>
+        <div class="sound-bar" style="animation-duration:0.9s;height:8px"></div>
+        <div class="sound-bar" style="animation-duration:0.5s;height:22px"></div>
+        <div class="sound-bar" style="animation-duration:0.7s;height:14px"></div>
+        <div class="sound-bar" style="animation-duration:1.0s;height:10px"></div>
+        <div class="sound-bar" style="animation-duration:0.55s;height:20px"></div>
+        <div class="sound-bar" style="animation-duration:0.85s;height:16px"></div>
+      </div>
+    </div>
+
+    <!-- Phase 4 -->
+    <div class="relative bg-bg-card border border-gray-800 rounded-lg p-5">
+      <div class="font-mono text-xs text-purple-light mb-2">PHASE_04</div>
+      <h3 class="text-lg font-bold mb-2">Complete</h3>
+      <p class="text-gray-400 text-sm">引き継ぎノート+アクションアイテム自動生成。確認・完了。</p>
+      <div class="mt-3 font-mono text-xs text-gray-600">
+        <span class="text-purple-light">$</span> generate(note)
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================ -->
+<!-- ARCHITECTURE SECTION -->
+<!-- ============================================ -->
+<section class="fade-section py-24 px-4 max-w-5xl mx-auto">
+  <div class="gradient-line mb-16"></div>
+  <h2 class="text-3xl sm:text-4xl font-bold text-center mb-4">
+    Built with <span class="text-cyan">Modern Stack</span>
+  </h2>
+  <p class="text-center text-gray-500 font-mono text-sm mb-12">$ tsugiai arch --diagram</p>
+
+  <div class="bg-bg-card border border-gray-800 rounded-lg p-6 sm:p-8 overflow-x-auto box-glow-cyan">
+    <pre class="font-mono text-sm sm:text-base text-gray-300 leading-relaxed"><code>
+  <span class="text-cyan">Client</span> (React 18 + TypeScript + Vite + Tailwind)
+       |
+       |  TanStack Query
+       v
+  <span class="text-purple-light">API Gateway</span> (FastAPI)
+       |
+       +---> <span class="text-cyan">Template Agent</span> (Google ADK + Gemini)
+       |
+       +---> <span class="text-cyan">Checkout Agent</span> (Google ADK + Gemini)
+       |         |
+       |         +---> <span class="text-yellow-300">Gemini Live API</span> (WebSocket)
+       |
+       +---> <span class="text-cyan">Handover Agent</span> (Google ADK + Gemini)
+       |
+       v
+  <span class="text-purple-light">Google Cloud</span>
+       |
+       +---> Firestore (multi-tenant)
+       +---> Cloud Run (auto-scale)
+       +---> Cloud Storage (photos)
+       +---> Firebase Auth
+    </code></pre>
+  </div>
+
+  <div class="flex flex-wrap justify-center gap-3 mt-8">
+    <span class="tech-badge bg-bg-card border border-gray-800 rounded-full px-4 py-2 font-mono text-xs text-cyan">React</span>
+    <span class="tech-badge bg-bg-card border border-gray-800 rounded-full px-4 py-2 font-mono text-xs text-cyan">TypeScript</span>
+    <span class="tech-badge bg-bg-card border border-gray-800 rounded-full px-4 py-2 font-mono text-xs text-purple-light">Python</span>
+    <span class="tech-badge bg-bg-card border border-gray-800 rounded-full px-4 py-2 font-mono text-xs text-purple-light">Gemini</span>
+    <span class="tech-badge bg-bg-card border border-gray-800 rounded-full px-4 py-2 font-mono text-xs text-yellow-300">Firebase</span>
+    <span class="tech-badge bg-bg-card border border-gray-800 rounded-full px-4 py-2 font-mono text-xs text-yellow-300">Cloud Run</span>
+  </div>
+</section>
+
+<!-- ============================================ -->
+<!-- FEATURES SECTION -->
+<!-- ============================================ -->
+<section class="fade-section py-24 px-4 max-w-6xl mx-auto">
+  <div class="gradient-line mb-16"></div>
+  <h2 class="text-3xl sm:text-4xl font-bold text-center mb-4">
+    Engineered to <span class="text-cyan">Prevent Human Error</span>
+  </h2>
+  <p class="text-center text-gray-500 font-mono text-sm mb-12">$ tsugiai features --unique</p>
+
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+    <!-- Trap Questions -->
+    <div class="bg-bg-card border border-gray-800 rounded-lg p-6 hover:border-cyan/20 transition-colors">
+      <div class="font-mono text-xs text-red-400 mb-3">TRAP_QUESTION</div>
+      <h3 class="text-lg font-bold mb-2">NGが正の回答</h3>
+      <p class="text-gray-400 text-sm mb-3">否定形質問でOKを押すとNG扱い。惰性回答を検出して事故を防ぐ。</p>
+      <div class="font-mono text-xs text-gray-600 bg-bg rounded px-3 py-2">
+        <span class="text-red-400">if</span> answer == <span class="text-green-400">"OK"</span> <span class="text-red-400">&&</span> q.trap:<br>
+        &nbsp;&nbsp;result = <span class="text-red-400">NG</span> <span class="text-gray-500">// gotcha</span>
+      </div>
+    </div>
+
+    <!-- Random Order -->
+    <div class="bg-bg-card border border-gray-800 rounded-lg p-6 hover:border-cyan/20 transition-colors">
+      <div class="font-mono text-xs text-cyan mb-3">RANDOMIZE</div>
+      <h3 class="text-lg font-bold mb-2">ランダム順序表示</h3>
+      <p class="text-gray-400 text-sm mb-3">Fisher-Yatesシャッフルで毎回異なる表示順。パターン化を物理的に防止。</p>
+      <div class="font-mono text-xs text-gray-600 bg-bg rounded px-3 py-2">
+        <span class="text-purple-light">for</span> i <span class="text-purple-light">in</span> range(n-1, 0, -1):<br>
+        &nbsp;&nbsp;j = <span class="text-cyan">random</span>(0, i)<br>
+        &nbsp;&nbsp;<span class="text-cyan">swap</span>(items[i], items[j])
+      </div>
+    </div>
+
+    <!-- Risk Detection -->
+    <div class="bg-bg-card border border-gray-800 rounded-lg p-6 hover:border-cyan/20 transition-colors">
+      <div class="font-mono text-xs text-yellow-300 mb-3">RISK_DETECT</div>
+      <h3 class="text-lg font-bold mb-2">危険キーワード自動検出</h3>
+      <p class="text-gray-400 text-sm mb-3">「火災」「故障」「漏れ」等を検出。自動で2~3回の深掘り質問を生成。</p>
+      <div class="font-mono text-xs text-gray-600 bg-bg rounded px-3 py-2">
+        <span class="text-yellow-300">keywords</span> = [<span class="text-green-400">"火災"</span>, <span class="text-green-400">"故障"</span>, <span class="text-green-400">"漏れ"</span>]<br>
+        <span class="text-purple-light">if</span> match: <span class="text-cyan">deep_dive</span>(n=3)
+      </div>
+    </div>
+
+    <!-- Gemini Live -->
+    <div class="bg-bg-card border border-gray-800 rounded-lg p-6 hover:border-cyan/20 transition-colors">
+      <div class="font-mono text-xs text-cyan mb-3">VOICE_AI</div>
+      <h3 class="text-lg font-bold mb-2">Gemini Live 音声対話</h3>
+      <p class="text-gray-400 text-sm mb-3">STT/LLM/TTS全てGemini内部ネイティブ処理。バージイン対応。ハンズフリー。</p>
+      <div class="font-mono text-xs text-gray-600 bg-bg rounded px-3 py-2">
+        <span class="text-cyan">ws</span> = <span class="text-purple-light">connect</span>(<span class="text-green-400">"gemini.live"</span>)<br>
+        <span class="text-cyan">ws</span>.send(<span class="text-yellow-300">audio_chunk</span>)
+      </div>
+    </div>
+
+    <!-- Hard/Soft Gate -->
+    <div class="bg-bg-card border border-gray-800 rounded-lg p-6 hover:border-cyan/20 transition-colors">
+      <div class="font-mono text-xs text-purple-light mb-3">GATE_SYSTEM</div>
+      <h3 class="text-lg font-bold mb-2">ハード/ソフトゲート</h3>
+      <p class="text-gray-400 text-sm mb-3">必須項目未回答はハードブロック。NG理由確認は提案型。強制しない設計。</p>
+      <div class="font-mono text-xs text-gray-600 bg-bg rounded px-3 py-2">
+        <span class="text-red-400">HARD</span>: required &rarr; <span class="text-red-400">block</span><br>
+        <span class="text-yellow-300">SOFT</span>: ng_reason &rarr; <span class="text-yellow-300">suggest</span>
+      </div>
+    </div>
+
+    <!-- Multi-tenant -->
+    <div class="bg-bg-card border border-gray-800 rounded-lg p-6 hover:border-cyan/20 transition-colors">
+      <div class="font-mono text-xs text-green-400 mb-3">MULTI_TENANT</div>
+      <h3 class="text-lg font-bold mb-2">マルチテナント</h3>
+      <p class="text-gray-400 text-sm mb-3">Cloud Firestoreでテナント分離。組織ごとに独立したデータ空間を提供。</p>
+      <div class="font-mono text-xs text-gray-600 bg-bg rounded px-3 py-2">
+        <span class="text-purple-light">db</span>.collection(<span class="text-green-400">"tenants"</span>)<br>
+        &nbsp;&nbsp;.doc(<span class="text-cyan">tenant_id</span>)<br>
+        &nbsp;&nbsp;.collection(<span class="text-green-400">"checklists"</span>)
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================ -->
+<!-- METRICS SECTION -->
+<!-- ============================================ -->
+<section class="fade-section py-24 px-4 max-w-5xl mx-auto">
+  <div class="gradient-line mb-16"></div>
+  <h2 class="text-3xl sm:text-4xl font-bold text-center mb-4">
+    Numbers <span class="text-cyan">Don't Lie</span>
+  </h2>
+  <p class="text-center text-gray-500 font-mono text-sm mb-12">$ tsugiai metrics --summary</p>
+
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-8 text-center">
+    <div class="bg-bg-card border border-gray-800 rounded-lg p-8 box-glow-cyan">
+      <div class="text-5xl sm:text-6xl font-black text-cyan mb-2">
+        <span class="counter" data-target="80">0</span><span class="text-cyan">%</span>
+      </div>
+      <p class="text-gray-400 font-mono text-sm">チェックリスト作成工数削減</p>
+      <p class="text-gray-600 text-xs mt-2">1時間 &rarr; 10分 (目標値)</p>
+    </div>
+
+    <div class="bg-bg-card border border-gray-800 rounded-lg p-8 box-glow-purple">
+      <div class="text-5xl sm:text-6xl font-black text-purple-light mb-2">
+        <span class="counter" data-target="3">0</span>
+      </div>
+      <p class="text-gray-400 font-mono text-sm">AI Agents</p>
+      <p class="text-gray-600 text-xs mt-2">Template / Checkout / Handover</p>
+    </div>
+
+    <div class="bg-bg-card border border-gray-800 rounded-lg p-8 box-glow-cyan">
+      <div class="text-5xl sm:text-6xl font-black text-cyan mb-2">
+        <span class="counter" data-target="4">0</span>
+      </div>
+      <p class="text-gray-400 font-mono text-sm">Phase Checkout</p>
+      <p class="text-gray-600 text-xs mt-2">Form / Photo / AI / Complete</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================ -->
+<!-- TECH STACK SECTION -->
+<!-- ============================================ -->
+<section class="fade-section py-24 px-4 max-w-5xl mx-auto">
+  <div class="gradient-line mb-16"></div>
+  <h2 class="text-3xl sm:text-4xl font-bold text-center mb-4">
+    <span class="text-cyan">Stack</span>
+  </h2>
+  <p class="text-center text-gray-500 font-mono text-sm mb-12">$ tsugiai stack --list</p>
+
+  <div class="flex flex-wrap justify-center gap-4">
+    <div class="tech-badge bg-bg-card border border-gray-800 rounded-lg px-5 py-3 flex items-center gap-3">
+      <span class="text-cyan text-lg">&lt;/&gt;</span>
+      <span class="font-mono text-sm">React 18</span>
+    </div>
+    <div class="tech-badge bg-bg-card border border-gray-800 rounded-lg px-5 py-3 flex items-center gap-3">
+      <span class="text-blue-400 text-lg font-bold">TS</span>
+      <span class="font-mono text-sm">TypeScript</span>
+    </div>
+    <div class="tech-badge bg-bg-card border border-gray-800 rounded-lg px-5 py-3 flex items-center gap-3">
+      <span class="text-yellow-300 text-lg font-bold">&#9889;</span>
+      <span class="font-mono text-sm">Vite</span>
+    </div>
+    <div class="tech-badge bg-bg-card border border-gray-800 rounded-lg px-5 py-3 flex items-center gap-3">
+      <span class="text-cyan text-lg font-bold">~</span>
+      <span class="font-mono text-sm">Tailwind CSS</span>
+    </div>
+    <div class="tech-badge bg-bg-card border border-gray-800 rounded-lg px-5 py-3 flex items-center gap-3">
+      <span class="text-yellow-300 text-lg font-bold">Py</span>
+      <span class="font-mono text-sm">Python 3.11</span>
+    </div>
+    <div class="tech-badge bg-bg-card border border-gray-800 rounded-lg px-5 py-3 flex items-center gap-3">
+      <span class="text-green-400 text-lg font-bold">&#9889;</span>
+      <span class="font-mono text-sm">FastAPI</span>
+    </div>
+    <div class="tech-badge bg-bg-card border border-gray-800 rounded-lg px-5 py-3 flex items-center gap-3">
+      <span class="text-purple-light text-lg font-bold">G</span>
+      <span class="font-mono text-sm">Google ADK</span>
+    </div>
+    <div class="tech-badge bg-bg-card border border-gray-800 rounded-lg px-5 py-3 flex items-center gap-3">
+      <span class="text-cyan text-lg font-bold">&#10022;</span>
+      <span class="font-mono text-sm">Gemini</span>
+    </div>
+    <div class="tech-badge bg-bg-card border border-gray-800 rounded-lg px-5 py-3 flex items-center gap-3">
+      <span class="text-yellow-300 text-lg font-bold">&#9632;</span>
+      <span class="font-mono text-sm">Firebase</span>
+    </div>
+    <div class="tech-badge bg-bg-card border border-gray-800 rounded-lg px-5 py-3 flex items-center gap-3">
+      <span class="text-blue-400 text-lg font-bold">&#9729;</span>
+      <span class="font-mono text-sm">Cloud Run</span>
+    </div>
+    <div class="tech-badge bg-bg-card border border-gray-800 rounded-lg px-5 py-3 flex items-center gap-3">
+      <span class="text-orange-400 text-lg font-bold">&#9881;</span>
+      <span class="font-mono text-sm">Firestore</span>
+    </div>
+    <div class="tech-badge bg-bg-card border border-gray-800 rounded-lg px-5 py-3 flex items-center gap-3">
+      <span class="text-green-400 text-lg font-bold">&#8635;</span>
+      <span class="font-mono text-sm">Cloud Build</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================ -->
+<!-- CTA SECTION -->
+<!-- ============================================ -->
+<section class="fade-section py-24 px-4 max-w-4xl mx-auto text-center">
+  <div class="gradient-line mb-16"></div>
+  <h2 class="text-3xl sm:text-4xl font-bold mb-4">
+    Start Building <span class="text-cyan">Safer Handovers</span>
+  </h2>
+  <p class="text-gray-400 mb-8 font-mono text-sm">$ tsugiai deploy --production</p>
+
+  <div class="flex flex-col sm:flex-row gap-4 justify-center">
+    <button type="button" disabled class="inline-flex items-center gap-2 bg-cyan/5 border border-cyan/20 text-cyan/50 px-8 py-3 rounded-lg font-mono text-sm cursor-not-allowed">
+      <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+      GitHub - Coming Soon
+    </button>
+    <button type="button" disabled class="inline-flex items-center gap-2 bg-purple/5 border border-purple/20 text-purple-light/50 px-8 py-3 rounded-lg font-mono text-sm cursor-not-allowed">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+      Docs - Coming Soon
+    </button>
+  </div>
+</section>
+
+<!-- ============================================ -->
+<!-- FOOTER -->
+<!-- ============================================ -->
+<footer class="py-8 px-4 text-center border-t border-gray-800/50">
+  <p class="font-mono text-xs text-gray-600">Built with Google ADK + Gemini | MIT License</p>
+  <p class="font-mono text-xs text-gray-700 mt-2">&copy; 2026 TSUGIAI</p>
+</footer>
+
+<!-- ============================================ -->
+<!-- JAVASCRIPT -->
+<!-- ============================================ -->
+<script>
+// Intersection Observer for fade-in sections
+document.addEventListener('DOMContentLoaded', () => {
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+      }
+    });
+  }, { threshold: 0.1 });
+
+  document.querySelectorAll('.fade-section').forEach(el => observer.observe(el));
+
+  // Counter animation
+  const counterObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const counters = entry.target.querySelectorAll('.counter');
+        counters.forEach(counter => {
+          if (counter.dataset.animated) return;
+          counter.dataset.animated = 'true';
+          const target = parseInt(counter.dataset.target);
+          const duration = 1500;
+          const start = performance.now();
+
+          function update(now) {
+            const elapsed = now - start;
+            const progress = Math.min(elapsed / duration, 1);
+            const eased = 1 - Math.pow(1 - progress, 3);
+            counter.textContent = Math.round(eased * target);
+            if (progress < 1) requestAnimationFrame(update);
+          }
+          requestAnimationFrame(update);
+        });
+      }
+    });
+  }, { threshold: 0.3 });
+
+  document.querySelectorAll('.counter').forEach(el => {
+    counterObserver.observe(el.closest('section') || el);
+  });
+
+  // Code rain effect
+  const codeRain = document.getElementById('code-rain');
+  const codeSnippets = [
+    'agent.run()', 'await checkout()', 'detect_risk(msg)',
+    'shuffle(items)', 'gen_note(data)', 'ws.connect()',
+    'if trap: NG', 'deep_dive(n=3)', 'classify(section)',
+    'save_template()', 'firestore.get()', 'auth.verify()',
+    'gemini.stream()', 'parse(response)', 'validate(input)',
+  ];
+
+  function createRainLine() {
+    const line = document.createElement('div');
+    line.className = 'code-rain-line';
+    line.textContent = codeSnippets[Math.floor(Math.random() * codeSnippets.length)];
+    line.style.left = Math.random() * 100 + '%';
+    line.style.animationDuration = (8 + Math.random() * 12) + 's';
+    line.style.animationDelay = Math.random() * 5 + 's';
+    line.style.fontSize = (10 + Math.random() * 4) + 'px';
+    codeRain.appendChild(line);
+
+    line.addEventListener('animationiteration', () => {
+      line.textContent = codeSnippets[Math.floor(Math.random() * codeSnippets.length)];
+      line.style.left = Math.random() * 100 + '%';
+    });
+  }
+
+  // Create rain lines (limit for performance)
+  const rainCount = Math.min(window.innerWidth / 80, 20);
+  for (let i = 0; i < rainCount; i++) {
+    createRainLine();
+  }
+});
+</script>
+
+</body>
+</html>

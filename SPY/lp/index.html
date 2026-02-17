@@ -1,0 +1,1141 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TSUGIAI - AI-Powered Handover System</title>
+<meta name="description" content="AIエージェントを活用した業務引き継ぎチェックリスト＆チェックアウトシステム。製造業のシフト交代時の引き継ぎ事故を防ぐ。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+/* ========== Reset & Base ========== */
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --bg-deep: #0a0a0f;
+  --bg-dark: #111827;
+  --bg-card: rgba(255,255,255,0.04);
+  --border-card: rgba(255,255,255,0.08);
+  --border-hover: rgba(6,182,212,0.5);
+  --accent-cyan: #06b6d4;
+  --accent-blue: #3b82f6;
+  --accent-gradient: linear-gradient(135deg, #06b6d4, #3b82f6);
+  --text-main: #f1f5f9;
+  --text-sub: #94a3b8;
+  --text-muted: #64748b;
+  --font-body: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Source Code Pro', monospace;
+  --glow-cyan: 0 0 20px rgba(6,182,212,0.3), 0 0 40px rgba(6,182,212,0.1);
+}
+
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: var(--font-body);
+  background: var(--bg-deep);
+  color: var(--text-main);
+  line-height: 1.7;
+  overflow-x: hidden;
+}
+
+/* ========== Utility ========== */
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+.gradient-text {
+  background: var(--accent-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.section-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--accent-cyan), var(--accent-blue), transparent);
+  opacity: 0.3;
+  margin: 0;
+}
+
+/* ========== Scroll Animation ========== */
+.fade-in {
+  opacity: 0;
+  transform: translateY(30px);
+  transition: opacity 0.7s ease, transform 0.7s ease;
+}
+.fade-in.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ========== Navigation ========== */
+nav {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  padding: 16px 0;
+  background: rgba(10,10,15,0.8);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+nav .container {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.nav-logo {
+  font-family: var(--font-mono);
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+.nav-links {
+  display: flex;
+  gap: 32px;
+  list-style: none;
+}
+.nav-links a {
+  color: var(--text-sub);
+  text-decoration: none;
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: color 0.3s;
+}
+.nav-links a:hover { color: var(--accent-cyan); }
+
+.nav-hamburger {
+  display: none;
+  flex-direction: column;
+  gap: 5px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+}
+.nav-hamburger span {
+  display: block;
+  width: 24px;
+  height: 2px;
+  background: var(--text-sub);
+  transition: all 0.3s;
+}
+
+/* ========== Hero ========== */
+.hero {
+  position: relative;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding-top: 80px;
+  overflow: hidden;
+}
+
+.hero-grid-bg {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(6,182,212,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(6,182,212,0.03) 1px, transparent 1px);
+  background-size: 60px 60px;
+  mask-image: radial-gradient(ellipse 70% 60% at 50% 40%, black 20%, transparent 70%);
+  -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 40%, black 20%, transparent 70%);
+}
+
+.hero-glow {
+  position: absolute;
+  top: 20%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 600px;
+  height: 400px;
+  background: radial-gradient(circle, rgba(6,182,212,0.08) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.hero-content { position: relative; z-index: 1; }
+
+.hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--border-card);
+  background: var(--bg-card);
+  font-size: 0.8rem;
+  color: var(--text-sub);
+  margin-bottom: 32px;
+  font-family: var(--font-mono);
+}
+.hero-badge .dot {
+  width: 6px;
+  height: 6px;
+  background: #22c55e;
+  border-radius: 50%;
+  animation: pulse-dot 2s ease infinite;
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.hero h1 {
+  font-size: clamp(3.5rem, 8vw, 7rem);
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+  margin-bottom: 16px;
+}
+
+.hero-subtitle {
+  font-family: var(--font-mono);
+  font-size: clamp(0.9rem, 2vw, 1.15rem);
+  color: var(--text-sub);
+  margin-bottom: 12px;
+  letter-spacing: 0.15em;
+  font-weight: 500;
+}
+
+.hero-catch {
+  font-size: clamp(1.1rem, 2.5vw, 1.5rem);
+  color: var(--text-main);
+  margin-bottom: 40px;
+  font-weight: 600;
+}
+
+/* Terminal Animation */
+.terminal-box {
+  display: inline-block;
+  background: rgba(0,0,0,0.6);
+  border: 1px solid var(--border-card);
+  border-radius: 8px;
+  padding: 16px 28px;
+  margin-bottom: 40px;
+  font-family: var(--font-mono);
+  font-size: clamp(0.8rem, 1.5vw, 1rem);
+  position: relative;
+}
+.terminal-box .terminal-dots {
+  position: absolute;
+  top: 10px;
+  left: 14px;
+  display: flex;
+  gap: 6px;
+}
+.terminal-box .terminal-dots span {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.terminal-box .terminal-dots span:nth-child(1) { background: #ef4444; }
+.terminal-box .terminal-dots span:nth-child(2) { background: #eab308; }
+.terminal-box .terminal-dots span:nth-child(3) { background: #22c55e; }
+
+.terminal-text {
+  color: #22c55e;
+  padding-top: 8px;
+}
+.terminal-text .prompt { color: var(--accent-cyan); }
+.terminal-text .command {
+  display: inline-block;
+  overflow: hidden;
+  white-space: nowrap;
+  border-right: 2px solid #22c55e;
+  animation: typing 3.5s steps(50) 0.5s forwards, blink-caret 0.7s step-end infinite;
+  width: 0;
+  vertical-align: bottom;
+}
+@keyframes typing {
+  from { width: 0; }
+  to { width: 32em; }
+}
+@keyframes blink-caret {
+  0%, 100% { border-color: #22c55e; }
+  50% { border-color: transparent; }
+}
+
+.hero-buttons {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 32px;
+  background: var(--accent-gradient);
+  color: #fff;
+  font-weight: 600;
+  font-size: 1rem;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  text-decoration: none;
+  transition: transform 0.2s, box-shadow 0.3s;
+}
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--glow-cyan);
+}
+span.btn-primary {
+  pointer-events: none;
+}
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 32px;
+  background: transparent;
+  color: var(--text-main);
+  font-weight: 600;
+  font-size: 1rem;
+  border: 1px solid var(--border-card);
+  border-radius: 8px;
+  cursor: pointer;
+  text-decoration: none;
+  transition: border-color 0.3s, background 0.3s;
+}
+.btn-secondary:hover {
+  border-color: var(--accent-cyan);
+  background: rgba(6,182,212,0.05);
+}
+
+/* ========== Section Common ========== */
+section {
+  padding: 100px 0;
+}
+.section-label {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--accent-cyan);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  margin-bottom: 12px;
+}
+.section-title {
+  font-size: clamp(2rem, 4vw, 3rem);
+  font-weight: 800;
+  margin-bottom: 16px;
+  line-height: 1.2;
+}
+.section-desc {
+  color: var(--text-sub);
+  font-size: 1.05rem;
+  max-width: 640px;
+  margin-bottom: 56px;
+}
+
+/* ========== Problem Section ========== */
+.problem { background: linear-gradient(180deg, var(--bg-deep) 0%, var(--bg-dark) 100%); }
+
+.problem-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 24px;
+  margin-bottom: 48px;
+}
+.problem-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-card);
+  border-radius: 12px;
+  padding: 32px 28px;
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+.problem-card:hover {
+  border-color: var(--border-hover);
+  box-shadow: var(--glow-cyan);
+}
+.problem-icon {
+  font-size: 2rem;
+  margin-bottom: 16px;
+  display: block;
+}
+.problem-card h3 {
+  font-size: 1.1rem;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+.problem-card p {
+  color: var(--text-sub);
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.stats-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 24px;
+}
+.stat-item {
+  text-align: center;
+  padding: 24px;
+}
+.stat-number {
+  font-size: 2.5rem;
+  font-weight: 900;
+  display: block;
+  margin-bottom: 4px;
+}
+.stat-label {
+  color: var(--text-sub);
+  font-size: 0.9rem;
+}
+
+/* ========== How It Works ========== */
+.how-it-works { background: var(--bg-dark); }
+
+.phases-flow {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  position: relative;
+}
+.phase-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-card);
+  border-radius: 12px;
+  padding: 28px 20px;
+  text-align: center;
+  position: relative;
+  transition: border-color 0.3s, box-shadow 0.3s, transform 0.3s;
+}
+.phase-card:hover {
+  border-color: var(--border-hover);
+  box-shadow: var(--glow-cyan);
+  transform: translateY(-4px);
+}
+.phase-number {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--accent-cyan);
+  letter-spacing: 0.15em;
+  margin-bottom: 12px;
+  display: block;
+}
+.phase-icon {
+  font-size: 2.2rem;
+  margin-bottom: 12px;
+  display: block;
+}
+.phase-card h3 {
+  font-size: 1rem;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+.phase-card p {
+  color: var(--text-sub);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+.phase-arrow {
+  display: none;
+}
+
+/* ========== AI Agents ========== */
+.agents { background: linear-gradient(180deg, var(--bg-dark) 0%, var(--bg-deep) 100%); }
+
+.agents-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 28px;
+}
+.agent-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-card);
+  border-radius: 16px;
+  padding: 36px 28px;
+  transition: border-color 0.3s, box-shadow 0.3s, transform 0.3s;
+  position: relative;
+  overflow: hidden;
+}
+.agent-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--accent-gradient);
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+.agent-card:hover {
+  border-color: var(--border-hover);
+  box-shadow: var(--glow-cyan);
+  transform: translateY(-4px);
+}
+.agent-card:hover::before { opacity: 1; }
+
+.agent-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(6,182,212,0.15), rgba(59,130,246,0.15));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.6rem;
+  margin-bottom: 20px;
+}
+.agent-card h3 {
+  font-size: 1.2rem;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+.agent-role {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--accent-cyan);
+  margin-bottom: 14px;
+  display: block;
+}
+.agent-card > p {
+  color: var(--text-sub);
+  font-size: 0.9rem;
+  line-height: 1.6;
+  margin-bottom: 18px;
+}
+.agent-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.agent-tool-tag {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  padding: 4px 10px;
+  border-radius: 4px;
+  background: rgba(6,182,212,0.08);
+  border: 1px solid rgba(6,182,212,0.15);
+  color: var(--accent-cyan);
+}
+
+/* ========== Features ========== */
+.features { background: var(--bg-deep); }
+
+.features-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+}
+.feature-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-card);
+  border-radius: 12px;
+  padding: 28px 24px;
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+.feature-card:hover {
+  border-color: var(--border-hover);
+  box-shadow: var(--glow-cyan);
+}
+.feature-icon {
+  font-size: 1.6rem;
+  margin-bottom: 14px;
+  display: block;
+}
+.feature-card h3 {
+  font-size: 1rem;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+.feature-card p {
+  color: var(--text-sub);
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+
+/* ========== Architecture ========== */
+.architecture { background: var(--bg-dark); }
+
+.arch-terminal {
+  background: rgba(0,0,0,0.5);
+  border: 1px solid var(--border-card);
+  border-radius: 12px;
+  overflow: hidden;
+  max-width: 900px;
+  margin: 0 auto;
+}
+.arch-terminal-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: rgba(255,255,255,0.03);
+  border-bottom: 1px solid var(--border-card);
+}
+.arch-terminal-header .dots { display: flex; gap: 6px; }
+.arch-terminal-header .dots span {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+.arch-terminal-header .dots span:nth-child(1) { background: #ef4444; }
+.arch-terminal-header .dots span:nth-child(2) { background: #eab308; }
+.arch-terminal-header .dots span:nth-child(3) { background: #22c55e; }
+.arch-terminal-header .title {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-left: 8px;
+}
+
+.arch-terminal-body {
+  padding: 28px 32px;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  line-height: 1.9;
+  color: var(--text-sub);
+  overflow-x: auto;
+}
+.arch-terminal-body .comment { color: var(--text-muted); }
+.arch-terminal-body .layer-label { color: var(--accent-cyan); font-weight: 700; }
+.arch-terminal-body .component { color: #22c55e; }
+.arch-terminal-body .arrow { color: var(--text-muted); }
+.arch-terminal-body .service { color: #a78bfa; }
+.arch-terminal-body .highlight { color: #f59e0b; }
+
+/* ========== Tech Stack ========== */
+.techstack { background: linear-gradient(180deg, var(--bg-dark) 0%, var(--bg-deep) 100%); }
+
+.tech-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  justify-content: center;
+}
+.tech-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 22px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-card);
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: border-color 0.3s, box-shadow 0.3s, transform 0.2s;
+}
+.tech-badge:hover {
+  border-color: var(--border-hover);
+  box-shadow: var(--glow-cyan);
+  transform: translateY(-2px);
+}
+.tech-badge-icon {
+  font-size: 1.3rem;
+}
+
+/* ========== CTA ========== */
+.cta {
+  background: var(--bg-deep);
+  text-align: center;
+  padding: 120px 0;
+  position: relative;
+}
+.cta-glow {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 500px;
+  height: 300px;
+  background: radial-gradient(circle, rgba(6,182,212,0.06) 0%, transparent 70%);
+  pointer-events: none;
+}
+.cta-content { position: relative; z-index: 1; }
+.cta h2 {
+  font-size: clamp(1.8rem, 4vw, 2.8rem);
+  font-weight: 800;
+  margin-bottom: 20px;
+  line-height: 1.3;
+}
+.cta p {
+  color: var(--text-sub);
+  font-size: 1.05rem;
+  margin-bottom: 36px;
+}
+
+/* ========== Footer ========== */
+footer {
+  border-top: 1px solid rgba(255,255,255,0.05);
+  padding: 32px 0;
+  text-align: center;
+}
+footer p {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  font-family: var(--font-mono);
+}
+
+/* ========== Responsive ========== */
+@media (max-width: 768px) {
+  .nav-links { display: none; }
+  .nav-links.open {
+    display: flex;
+    flex-direction: column;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: rgba(10,10,15,0.95);
+    backdrop-filter: blur(20px);
+    padding: 24px;
+    gap: 20px;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+  }
+  .nav-hamburger { display: flex; }
+
+  section { padding: 72px 0; }
+
+  .hero h1 { font-size: clamp(2.8rem, 10vw, 4.5rem); }
+
+  .terminal-text .command {
+    animation: typing-mobile 3.5s steps(50) 0.5s forwards, blink-caret 0.7s step-end infinite;
+  }
+  @keyframes typing-mobile {
+    from { width: 0; }
+    to { width: 26em; }
+  }
+
+  .phases-flow {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .agents-grid {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+
+  .features-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .problem-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .stats-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .arch-terminal-body {
+    font-size: 0.7rem;
+    padding: 20px 16px;
+    line-height: 1.7;
+  }
+
+  .hero-buttons {
+    flex-direction: column;
+    align-items: center;
+  }
+  .btn-primary, .btn-secondary {
+    width: 100%;
+    max-width: 280px;
+    justify-content: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .stats-row { grid-template-columns: 1fr; }
+  .stat-number { font-size: 2rem; }
+  .terminal-box { padding: 14px 16px; font-size: 0.72rem; }
+}
+</style>
+</head>
+<body>
+
+<!-- ===== Navigation ===== -->
+<nav>
+  <div class="container">
+    <div class="nav-logo"><span class="gradient-text">TSUGIAI</span></div>
+    <ul class="nav-links" id="navLinks">
+      <li><a href="#problem">Why</a></li>
+      <li><a href="#how-it-works">How</a></li>
+      <li><a href="#agents">Agents</a></li>
+      <li><a href="#features">Features</a></li>
+      <li><a href="#architecture">Architecture</a></li>
+      <li><a href="#techstack">Stack</a></li>
+    </ul>
+    <button class="nav-hamburger" id="navHamburger" aria-label="Menu">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+</nav>
+
+<!-- ===== Hero ===== -->
+<section class="hero">
+  <div class="hero-grid-bg"></div>
+  <div class="hero-glow"></div>
+  <div class="hero-content">
+    <div class="hero-badge fade-in">
+      <span class="dot"></span>
+      Google ADK + Gemini Powered
+    </div>
+    <h1 class="fade-in"><span class="gradient-text">TSUGIAI</span></h1>
+    <p class="hero-subtitle fade-in">AI-Powered Handover System for Manufacturing</p>
+    <p class="hero-catch fade-in">製造業・交替勤務の現場から、引き継ぎの"抜け漏れ"をAIが構造的に潰す。</p>
+    <div class="terminal-box fade-in">
+      <div class="terminal-dots"><span></span><span></span><span></span></div>
+      <div class="terminal-text">
+        <span class="prompt">POST </span><span class="command">/api/v1/checkout/start {"template_id":"manufacturing-001"}</span>
+      </div>
+    </div>
+    <div class="hero-buttons fade-in">
+      <a href="#how-it-works" class="btn-primary">
+        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        Try It Out
+      </a>
+      <a href="#architecture" class="btn-secondary">
+        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2zM22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+        See the Docs
+      </a>
+    </div>
+  </div>
+</section>
+
+<div class="section-divider"></div>
+
+<!-- ===== Problem ===== -->
+<section class="problem" id="problem">
+  <div class="container">
+    <p class="section-label fade-in">// WHY TSUGIAI</p>
+    <h2 class="section-title fade-in">製造業の引き継ぎに、<br><span class="gradient-text">構造的な解決</span>を。</h2>
+    <p class="section-desc fade-in">シフト交代時の引き継ぎ事故は、ヒューマンエラーではなく「仕組みの不在」が原因です。</p>
+
+    <div class="problem-grid">
+      <div class="problem-card fade-in">
+        <span class="problem-icon">&#9888;</span>
+        <h3>属人化した引き継ぎ</h3>
+        <p>チェックリストが個人の記憶に依存。担当者が変わるたびに抜け漏れが発生する。</p>
+      </div>
+      <div class="problem-card fade-in">
+        <span class="problem-icon">&#128337;</span>
+        <h3>形骸化したチェック</h3>
+        <p>惰性で「OK」を連打する確認作業。本当に確認したのか誰にも分からない。</p>
+      </div>
+      <div class="problem-card fade-in">
+        <span class="problem-icon">&#128196;</span>
+        <h3>記録が残らない</h3>
+        <p>口頭伝達や走り書きメモ。事故発生時にトレーサビリティが確保できない。</p>
+      </div>
+      <div class="problem-card fade-in">
+        <span class="problem-icon">&#128683;</span>
+        <h3>危険の見逃し</h3>
+        <p>「異常なし」の裏に潜む微細な兆候。人間の注意力には限界がある。</p>
+      </div>
+    </div>
+
+    <div class="stats-row">
+      <div class="stat-item fade-in">
+        <span class="stat-number gradient-text">~10min</span>
+        <span class="stat-label">チェックリスト作成を約1時間 → 約10分に短縮<br><small style="color:var(--text-muted);font-size:0.75rem;">*業種・職種による</small></span>
+      </div>
+      <div class="stat-item fade-in">
+        <span class="stat-number gradient-text">&#128274;</span>
+        <span class="stat-label">引き継ぎ品質の属人性を排除</span>
+      </div>
+      <div class="stat-item fade-in">
+        <span class="stat-number gradient-text">24/7</span>
+        <span class="stat-label">AIによる危険キーワード常時自動検出</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="section-divider"></div>
+
+<!-- ===== How It Works ===== -->
+<section class="how-it-works" id="how-it-works">
+  <div class="container">
+    <p class="section-label fade-in">// HOW IT WORKS</p>
+    <h2 class="section-title fade-in">4つのフェーズで、<span class="gradient-text">抜け漏れを構造的に防ぐ</span>。</h2>
+    <p class="section-desc fade-in">マルチフェーズ・チェックアウトが、引き継ぎの全プロセスを構造化します。</p>
+
+    <div class="phases-flow">
+      <div class="phase-card fade-in">
+        <span class="phase-number">PHASE 01</span>
+        <span class="phase-icon">&#128221;</span>
+        <h3>Form Input</h3>
+        <p>AIが業種・職種から最適なチェックリストを自動生成。ハードゲートで必須項目を制御。</p>
+      </div>
+      <div class="phase-card fade-in">
+        <span class="phase-number">PHASE 02</span>
+        <span class="phase-icon">&#128247;</span>
+        <h3>Photo + AI</h3>
+        <p>写真添付とAI画像判定。現場の状態を視覚的に記録し、異常を自動検出。</p>
+      </div>
+      <div class="phase-card fade-in">
+        <span class="phase-number">PHASE 03</span>
+        <span class="phase-icon">&#129302;</span>
+        <h3>AI Review</h3>
+        <p>Checkout Agentが1項目ずつ対話で確認。危険キーワード検出で自動深掘り。音声対応。</p>
+      </div>
+      <div class="phase-card fade-in">
+        <span class="phase-number">PHASE 04</span>
+        <span class="phase-icon">&#128203;</span>
+        <h3>Document Gen</h3>
+        <p>対話結果から引き継ぎドキュメントとアクションアイテムを自動生成。完全な記録を残す。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="section-divider"></div>
+
+<!-- ===== AI Agents ===== -->
+<section class="agents" id="agents">
+  <div class="container">
+    <p class="section-label fade-in">// AI AGENTS</p>
+    <h2 class="section-title fade-in">3つのAIエージェントが、<br><span class="gradient-text">引き継ぎを自律的に遂行</span>する。</h2>
+    <p class="section-desc fade-in">Google ADK + Gemini を基盤に、各エージェントが専門的な役割を担います。</p>
+
+    <div class="agents-grid">
+      <div class="agent-card fade-in">
+        <div class="agent-icon">&#128209;</div>
+        <h3>Template Agent</h3>
+        <span class="agent-role">checklist generator</span>
+        <p>業種・職種・現場条件からチェックリストを自動生成。過去の引き継ぎログをFew-shot promptingで参照し、最適なテンプレートを提案。</p>
+        <div class="agent-tools">
+          <span class="agent-tool-tag">Gemini</span>
+          <span class="agent-tool-tag">Firestore</span>
+          <span class="agent-tool-tag">ADK</span>
+        </div>
+      </div>
+      <div class="agent-card fade-in">
+        <div class="agent-icon">&#127908;</div>
+        <h3>Checkout Agent</h3>
+        <span class="agent-role">interactive reviewer</span>
+        <p>1項目ずつAIが対話形式で確認。回答の曖昧さや矛盾を検出し、追加質問を自動生成。Gemini Live APIで音声対話にも対応。</p>
+        <div class="agent-tools">
+          <span class="agent-tool-tag">Gemini Live</span>
+          <span class="agent-tool-tag">WebSocket</span>
+          <span class="agent-tool-tag">NLP</span>
+        </div>
+      </div>
+      <div class="agent-card fade-in">
+        <div class="agent-icon">&#128218;</div>
+        <h3>Handover Agent</h3>
+        <span class="agent-role">document generator</span>
+        <p>チェックアウト結果を解析し、引き継ぎドキュメントとアクションアイテムを自動生成。次のシフトが即座に状況を把握できる。</p>
+        <div class="agent-tools">
+          <span class="agent-tool-tag">Gemini</span>
+          <span class="agent-tool-tag">PDF Gen</span>
+          <span class="agent-tool-tag">ADK</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="section-divider"></div>
+
+<!-- ===== Features ===== -->
+<section class="features" id="features">
+  <div class="container">
+    <p class="section-label fade-in">// KEY FEATURES</p>
+    <h2 class="section-title fade-in"><span class="gradient-text">安全を構造化</span>する機能群。</h2>
+    <p class="section-desc fade-in">ヒューマンエラーを仕組みで防ぐ、実践的な機能を搭載しています。</p>
+
+    <div class="features-grid">
+      <div class="feature-card fade-in">
+        <span class="feature-icon">&#128274;</span>
+        <h3>ハードゲート制御</h3>
+        <p>必須項目を通過しないと次フェーズに進めない。安全確認の形骸化を構造的に防止。</p>
+      </div>
+      <div class="feature-card fade-in">
+        <span class="feature-icon">&#127922;</span>
+        <h3>トラップ質問</h3>
+        <p>「NGが正解」の逆転質問で惰性回答を検出。ランダム順序表示で思考停止を防ぐ。</p>
+      </div>
+      <div class="feature-card fade-in">
+        <span class="feature-icon">&#127897;</span>
+        <h3>リアルタイム音声対話</h3>
+        <p>Gemini Live API (WebSocket) による双方向音声対話。ハンズフリーでチェックアウトを実行。</p>
+      </div>
+      <div class="feature-card fade-in">
+        <span class="feature-icon">&#128680;</span>
+        <h3>危険キーワード自動検出</h3>
+        <p>火災・故障・漏れ等のキーワードを即座に検出。自動で深掘り質問を展開し、リスクを可視化。</p>
+      </div>
+      <div class="feature-card fade-in">
+        <span class="feature-icon">&#128248;</span>
+        <h3>写真添付 + AI画像判定</h3>
+        <p>現場写真をAIが分析。目視では見逃しやすい異常兆候を検出し、エビデンスとして記録。</p>
+      </div>
+      <div class="feature-card fade-in">
+        <span class="feature-icon">&#128101;</span>
+        <h3>マルチテナント + RBAC</h3>
+        <p>複数拠点・複数チームに対応。ロールベースのアクセス制御で情報セキュリティを確保。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="section-divider"></div>
+
+<!-- ===== Architecture ===== -->
+<section class="architecture" id="architecture">
+  <div class="container">
+    <p class="section-label fade-in">// ARCHITECTURE</p>
+    <h2 class="section-title fade-in"><span class="gradient-text">システム構成</span></h2>
+    <p class="section-desc fade-in">クラウドネイティブな3層アーキテクチャ。スケーラブルで信頼性の高い基盤。</p>
+
+    <div class="arch-terminal fade-in">
+      <div class="arch-terminal-header">
+        <div class="dots"><span></span><span></span><span></span></div>
+        <span class="title">tsugiai-architecture.yml</span>
+      </div>
+      <div class="arch-terminal-body">
+<span class="comment"># TSUGIAI System Architecture</span>
+<span class="comment"># Cloud-Native 3-Layer Design</span>
+
+<span class="layer-label">CLIENT LAYER</span>  <span class="arrow">────────────────────────────────────</span>
+  <span class="component">React 18 SPA</span>  <span class="arrow">+</span>  <span class="component">TypeScript</span>  <span class="arrow">+</span>  <span class="component">Vite</span>
+  <span class="component">Tailwind CSS</span>  <span class="arrow">+</span>  <span class="component">TanStack Query</span>
+  <span class="arrow">deploy:</span>  <span class="service">Firebase Hosting</span>
+  <span class="arrow">|</span>
+  <span class="arrow">|  HTTPS / WebSocket</span>
+  <span class="arrow">v</span>
+
+<span class="layer-label">AGENT LAYER</span>  <span class="arrow">─────────────────────────────────────</span>
+  <span class="component">Python 3.11</span>  <span class="arrow">+</span>  <span class="component">FastAPI</span>  <span class="arrow">+</span>  <span class="component">Pydantic</span>
+  <span class="highlight">Google ADK</span>  <span class="arrow">+</span>  <span class="highlight">Gemini API</span>
+  <span class="arrow">agents:</span>
+    <span class="arrow">-</span> <span class="component">Template Agent</span>   <span class="arrow">// checklist generation</span>
+    <span class="arrow">-</span> <span class="component">Checkout Agent</span>   <span class="arrow">// interactive review</span>
+    <span class="arrow">-</span> <span class="component">Handover Agent</span>   <span class="arrow">// document generation</span>
+  <span class="arrow">deploy:</span>  <span class="service">Cloud Run</span>
+  <span class="arrow">|</span>
+  <span class="arrow">|  gRPC / REST</span>
+  <span class="arrow">v</span>
+
+<span class="layer-label">CLOUD SERVICES</span>  <span class="arrow">──────────────────────────────────</span>
+  <span class="service">Cloud Firestore</span>    <span class="arrow">// multi-tenant database</span>
+  <span class="service">Cloud Storage</span>      <span class="arrow">// photo &amp; document storage</span>
+  <span class="service">Firebase Auth</span>      <span class="arrow">// authentication + RBAC</span>
+  <span class="service">Cloud Functions</span>    <span class="arrow">// Node.js 20 serverless</span>
+  <span class="service">Gemini Live API</span>    <span class="arrow">// BidiGenerateContent / WS</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="section-divider"></div>
+
+<!-- ===== Tech Stack ===== -->
+<section class="techstack" id="techstack">
+  <div class="container" style="text-align:center;">
+    <p class="section-label fade-in">// TECH STACK</p>
+    <h2 class="section-title fade-in"><span class="gradient-text">Built With</span></h2>
+    <p class="section-desc fade-in" style="margin-left:auto;margin-right:auto;">モダンで信頼性の高い技術スタックで構築。</p>
+
+    <div class="tech-badges fade-in">
+      <div class="tech-badge"><span class="tech-badge-icon" style="color:#61dafb;">&#9883;</span> React 18</div>
+      <div class="tech-badge"><span class="tech-badge-icon" style="color:#3178c6;">TS</span> TypeScript</div>
+      <div class="tech-badge"><span class="tech-badge-icon" style="color:#3776ab;">&#128013;</span> Python 3.11</div>
+      <div class="tech-badge"><span class="tech-badge-icon" style="color:#009688;">&#9889;</span> FastAPI</div>
+      <div class="tech-badge"><span class="tech-badge-icon" style="color:#4285f4;">&#10024;</span> Gemini</div>
+      <div class="tech-badge"><span class="tech-badge-icon" style="color:#4285f4;">&#127891;</span> Google ADK</div>
+      <div class="tech-badge"><span class="tech-badge-icon" style="color:#ffca28;">&#128293;</span> Firebase</div>
+      <div class="tech-badge"><span class="tech-badge-icon" style="color:#4285f4;">&#9729;</span> Cloud Run</div>
+      <div class="tech-badge"><span class="tech-badge-icon" style="color:#06b6d4;">&#127744;</span> Tailwind CSS</div>
+      <div class="tech-badge"><span class="tech-badge-icon" style="color:#f59e0b;">&#9889;</span> Vite</div>
+      <div class="tech-badge"><span class="tech-badge-icon" style="color:#ef4444;">&#128203;</span> TanStack Query</div>
+      <div class="tech-badge"><span class="tech-badge-icon" style="color:#e85d04;">&#128270;</span> Pydantic</div>
+    </div>
+  </div>
+</section>
+
+<div class="section-divider"></div>
+
+<!-- ===== CTA ===== -->
+<section class="cta" id="cta">
+  <div class="cta-glow"></div>
+  <div class="cta-content container">
+    <p class="section-label fade-in">// GET STARTED</p>
+    <h2 class="fade-in">引き継ぎを、もう二度と<br><span class="gradient-text">事故にしない。</span></h2>
+    <p class="fade-in">TSUGIAIで、製造現場の引き継ぎを構造的に変革しませんか。</p>
+    <div class="hero-buttons fade-in">
+      <span class="btn-primary" style="opacity:0.6;cursor:default;">
+        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        Coming Soon
+      </span>
+      <a href="#architecture" class="btn-secondary">
+        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+        See the Docs
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ===== Footer ===== -->
+<footer>
+  <div class="container">
+    <p>&copy; 2026 TSUGIAI &mdash; AI-Powered Handover System</p>
+  </div>
+</footer>
+
+<!-- ===== JavaScript ===== -->
+<script>
+// Scroll fade-in animation
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.classList.add('visible');
+    }
+  });
+}, {
+  threshold: 0.1,
+  rootMargin: '0px 0px -40px 0px'
+});
+
+document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+
+// Mobile hamburger menu
+const hamburger = document.getElementById('navHamburger');
+const navLinks = document.getElementById('navLinks');
+
+hamburger.addEventListener('click', () => {
+  navLinks.classList.toggle('open');
+});
+
+// Close menu on link click
+navLinks.querySelectorAll('a').forEach(link => {
+  link.addEventListener('click', () => {
+    navLinks.classList.remove('open');
+  });
+});
+
+// Smooth active nav highlight on scroll
+const sections = document.querySelectorAll('section[id]');
+const navItems = document.querySelectorAll('.nav-links a');
+
+window.addEventListener('scroll', () => {
+  let current = '';
+  sections.forEach(section => {
+    const top = section.offsetTop - 120;
+    if (window.scrollY >= top) {
+      current = section.getAttribute('id');
+    }
+  });
+  navItems.forEach(item => {
+    item.style.color = '';
+    if (item.getAttribute('href') === '#' + current) {
+      item.style.color = '#06b6d4';
+    }
+  });
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+# Local Claude settings (environment/permission for local machine)
+**/.claude/settings.local.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/

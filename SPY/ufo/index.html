@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UFO Flight Simulator</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: #0a0a0f; }
+canvas { display: block; }
+#startScreen {
+  position: fixed; inset: 0; z-index: 10;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  background: #0a0a0f;
+  font-family: 'Courier New', monospace; color: #f1f5f9;
+  transition: opacity 0.6s;
+}
+#startScreen.hidden { opacity: 0; pointer-events: none; }
+#startScreen h1 {
+  font-size: clamp(2rem, 5vw, 4rem); font-weight: 900;
+  letter-spacing: 0.15em; margin-bottom: 8px;
+  background: linear-gradient(135deg, #06b6d4, #3b82f6);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+#startScreen .sub { color: #94a3b8; font-size: 1rem; margin-bottom: 48px; letter-spacing: 0.1em; }
+#startScreen .prompt {
+  color: #22c55e; font-size: 1.1rem; margin-bottom: 40px;
+  animation: blink-prompt 1.2s step-end infinite;
+}
+@keyframes blink-prompt { 0%,100%{opacity:1;} 50%{opacity:0;} }
+#startScreen .controls {
+  color: #64748b; font-size: 0.82rem; line-height: 2;
+  text-align: left; border: 1px solid rgba(255,255,255,0.08);
+  padding: 20px 28px; border-radius: 8px; background: rgba(255,255,255,0.02);
+}
+#startScreen .controls span { color: #06b6d4; }
+</style>
+</head>
+<body>
+<div id="startScreen">
+  <h1>UFO FLIGHT SIMULATOR</h1>
+  <p class="sub">Deep Space Free Flight</p>
+  <p class="prompt">&gt; Press ENTER to launch _</p>
+  <div class="controls">
+    <span>WASD / Arrow Keys</span> ── Move<br>
+    <span>Shift</span> ── Boost (Warp Drive) <span style="color:#64748b;">// gauge top-right</span><br>
+    <span>Space</span> ── Beam Cannon <span style="color:#64748b;">// cooldown shown on HUD</span><br>
+    <span>Mouse</span> ── Aim Direction
+  </div>
+</div>
+<canvas id="c"></canvas>
+<script>
+(function(){
+"use strict";
+
+// ========== Config ==========
+const CFG = {
+  STAR_COUNT: 600,
+  STAR_LAYERS: 3,
+  PLANET_COUNT: 5,
+  TRAIL_LENGTH: 40,
+  PARTICLE_MAX: 300,
+  BEAM_PARTICLES: 60,
+  UFO_RADIUS: 22,
+  MAX_SPEED: 6,
+  BOOST_MAX_SPEED: 18,
+  ACCEL: 0.35,
+  BOOST_ACCEL: 0.7,
+  FRICTION: 0.975,
+  BOOST_FRICTION: 0.99,
+  TILT_FACTOR: 0.15,
+  TILT_SMOOTH: 0.08,
+  SHAKE_DECAY: 0.9,
+  BOOST_GAUGE_MAX: 100,
+  BOOST_DRAIN: 0.6,
+  BOOST_REGEN: 0.25,
+  BG_COLOR: '#0a0a0f',
+  BEAM_COOLDOWN: 20,
+};
+
+// ========== Canvas Setup ==========
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let W, H;
+function resize() {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ========== State ==========
+let started = false;
+let time = 0;
+
+const keys = {};
+window.addEventListener('keydown', e => {
+  keys[e.code] = true;
+  if (e.code === 'Enter' && !started) {
+    started = true;
+    document.getElementById('startScreen').classList.add('hidden');
+    initAudio();
+  }
+  if (['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) e.preventDefault();
+});
+window.addEventListener('keyup', e => { keys[e.code] = false; });
+
+let mouseX = 0, mouseY = 0;
+window.addEventListener('mousemove', e => { mouseX = e.clientX; mouseY = e.clientY; });
+
+// ========== UFO ==========
+const ufo = {
+  x: 0, y: 0,
+  vx: 0, vy: 0,
+  tilt: 0,
+  angle: 0,
+  boostGauge: CFG.BOOST_GAUGE_MAX,
+  beamCooldown: 0,
+};
+
+// ========== Stars ==========
+const stars = [];
+function initStars() {
+  stars.length = 0;
+  for (let i = 0; i < CFG.STAR_COUNT; i++) {
+    const layer = Math.floor(Math.random() * CFG.STAR_LAYERS);
+    const colors = ['#ffffff','#cce5ff','#ffe4c4','#ffd6d6','#d6e5ff'];
+    stars.push({
+      x: (Math.random() - 0.5) * W * 8,
+      y: (Math.random() - 0.5) * H * 8,
+      r: (0.4 + Math.random() * 1.2) * (1 + layer * 0.3),
+      layer: layer,
+      speed: 0.3 + layer * 0.35,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      twinkle: Math.random() * Math.PI * 2,
+      twinkleSpeed: 0.02 + Math.random() * 0.04,
+    });
+  }
+}
+initStars();
+
+// ========== Planets ==========
+const planets = [];
+function initPlanets() {
+  planets.length = 0;
+  const planetColors = [
+    {base:'#8b5c3a',ring:null},
+    {base:'#4a6fa5',ring:null},
+    {base:'#c4956a',ring:'rgba(200,180,140,0.3)'},
+    {base:'#7a4f7a',ring:null},
+    {base:'#3d6b5e',ring:'rgba(100,200,150,0.2)'},
+  ];
+  for (let i = 0; i < CFG.PLANET_COUNT; i++) {
+    const c = planetColors[i % planetColors.length];
+    planets.push({
+      x: (Math.random() - 0.5) * W * 10,
+      y: (Math.random() - 0.5) * H * 10,
+      r: 30 + Math.random() * 60,
+      color: c.base,
+      ringColor: c.ring,
+      layer: 0.15 + Math.random() * 0.2,
+    });
+  }
+}
+initPlanets();
+
+// ========== Trail ==========
+const trail = [];
+
+// ========== Particles ==========
+const particles = [];
+function spawnParticle(x, y, vx, vy, life, color, size) {
+  if (particles.length >= CFG.PARTICLE_MAX) return;
+  particles.push({ x, y, vx, vy, life, maxLife: life, color, size });
+}
+
+// ========== Audio ==========
+let audioCtx = null;
+let boostOsc = null;
+let boostGain = null;
+
+function initAudio() {
+  try {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    boostOsc = audioCtx.createOscillator();
+    boostGain = audioCtx.createGain();
+    boostOsc.type = 'sawtooth';
+    boostOsc.frequency.value = 60;
+    boostGain.gain.value = 0;
+    boostOsc.connect(boostGain);
+    boostGain.connect(audioCtx.destination);
+    boostOsc.start();
+  } catch(e) {}
+}
+
+function playBeamSound() {
+  if (!audioCtx) return;
+  try {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = 800;
+    osc.frequency.exponentialRampToValueAtTime(200, audioCtx.currentTime + 0.3);
+    gain.gain.value = 0.15;
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.4);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.4);
+  } catch(e) {}
+}
+
+// ========== Screen Shake ==========
+let shakeX = 0, shakeY = 0;
+
+// ========== Beam ==========
+const beams = [];
+
+// ========== Update ==========
+function update() {
+  time++;
+
+  // Input
+  let ax = 0, ay = 0;
+  if (keys['KeyW'] || keys['ArrowUp']) ay = -1;
+  if (keys['KeyS'] || keys['ArrowDown']) ay = 1;
+  if (keys['KeyA'] || keys['ArrowLeft']) ax = -1;
+  if (keys['KeyD'] || keys['ArrowRight']) ax = 1;
+
+  const boosting = keys['ShiftLeft'] || keys['ShiftRight'];
+  const canBoost = boosting && ufo.boostGauge > 0;
+
+  const accel = canBoost ? CFG.BOOST_ACCEL : CFG.ACCEL;
+  const friction = canBoost ? CFG.BOOST_FRICTION : CFG.FRICTION;
+  const maxSpd = canBoost ? CFG.BOOST_MAX_SPEED : CFG.MAX_SPEED;
+
+  // Normalize diagonal
+  if (ax !== 0 && ay !== 0) {
+    const d = 1 / Math.SQRT2;
+    ax *= d; ay *= d;
+  }
+
+  ufo.vx += ax * accel;
+  ufo.vy += ay * accel;
+
+  // Friction
+  ufo.vx *= friction;
+  ufo.vy *= friction;
+
+  // Speed cap
+  const spd = Math.sqrt(ufo.vx * ufo.vx + ufo.vy * ufo.vy);
+  if (spd > maxSpd) {
+    ufo.vx = (ufo.vx / spd) * maxSpd;
+    ufo.vy = (ufo.vy / spd) * maxSpd;
+  }
+
+  ufo.x += ufo.vx;
+  ufo.y += ufo.vy;
+
+  // Mouse aim
+  const dx = mouseX - W / 2;
+  const dy = mouseY - H / 2;
+  const targetAngle = Math.atan2(dy, dx);
+  let diff = targetAngle - ufo.angle;
+  while (diff > Math.PI) diff -= Math.PI * 2;
+  while (diff < -Math.PI) diff += Math.PI * 2;
+  ufo.angle += diff * 0.09;
+
+  // Tilt
+  const targetTilt = -ufo.vx * CFG.TILT_FACTOR;
+  ufo.tilt += (targetTilt - ufo.tilt) * CFG.TILT_SMOOTH;
+
+  // Boost gauge
+  if (canBoost) {
+    ufo.boostGauge = Math.max(0, ufo.boostGauge - CFG.BOOST_DRAIN);
+  } else {
+    ufo.boostGauge = Math.min(CFG.BOOST_GAUGE_MAX, ufo.boostGauge + CFG.BOOST_REGEN);
+  }
+
+  // Boost audio
+  if (boostGain && boostOsc) {
+    const targetVol = canBoost ? 0.08 : 0;
+    boostGain.gain.value += (targetVol - boostGain.gain.value) * 0.1;
+    boostOsc.frequency.value = 60 + spd * 8;
+  }
+
+  // Shake
+  if (canBoost) {
+    shakeX += (Math.random() - 0.5) * 3;
+    shakeY += (Math.random() - 0.5) * 3;
+  }
+  shakeX *= CFG.SHAKE_DECAY;
+  shakeY *= CFG.SHAKE_DECAY;
+
+  // Trail
+  trail.push({ x: ufo.x, y: ufo.y, age: 0 });
+  if (trail.length > CFG.TRAIL_LENGTH) trail.shift();
+  for (let t of trail) t.age++;
+
+  // Engine particles
+  if (spd > 0.5) {
+    const eAngle = Math.atan2(ufo.vy, ufo.vx) + Math.PI;
+    for (let i = 0; i < (canBoost ? 4 : 1); i++) {
+      const spread = (Math.random() - 0.5) * 0.8;
+      const pspd = 1 + Math.random() * 2 + spd * 0.3;
+      spawnParticle(
+        ufo.x + Math.cos(eAngle) * 15,
+        ufo.y + Math.sin(eAngle) * 15,
+        Math.cos(eAngle + spread) * pspd + (Math.random() - 0.5),
+        Math.sin(eAngle + spread) * pspd + (Math.random() - 0.5),
+        20 + Math.random() * 20,
+        canBoost ? '#3b82f6' : '#06b6d4',
+        canBoost ? 2 + Math.random() * 3 : 1 + Math.random() * 2
+      );
+    }
+  }
+
+  // Beam
+  if (ufo.beamCooldown > 0) ufo.beamCooldown--;
+  if (keys['Space'] && ufo.beamCooldown <= 0) {
+    ufo.beamCooldown = CFG.BEAM_COOLDOWN;
+    const bAngle = ufo.angle;
+    beams.push({
+      x: ufo.x + Math.cos(bAngle) * 30,
+      y: ufo.y + Math.sin(bAngle) * 30,
+      vx: Math.cos(bAngle) * 14,
+      vy: Math.sin(bAngle) * 14,
+      life: 50,
+      angle: bAngle,
+    });
+    playBeamSound();
+    // Beam particles
+    for (let i = 0; i < CFG.BEAM_PARTICLES; i++) {
+      const spread = (Math.random() - 0.5) * 0.4;
+      spawnParticle(
+        ufo.x + Math.cos(bAngle) * 30,
+        ufo.y + Math.sin(bAngle) * 30,
+        Math.cos(bAngle + spread) * (8 + Math.random() * 6),
+        Math.sin(bAngle + spread) * (8 + Math.random() * 6),
+        10 + Math.random() * 15,
+        '#22c55e',
+        1 + Math.random() * 2
+      );
+    }
+  }
+
+  // Update beams
+  for (let i = beams.length - 1; i >= 0; i--) {
+    const b = beams[i];
+    b.x += b.vx;
+    b.y += b.vy;
+    b.life--;
+    if (b.life <= 0) beams.splice(i, 1);
+  }
+
+  // Update particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vx *= 0.97;
+    p.vy *= 0.97;
+    p.life--;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+
+  // Star twinkle
+  for (const s of stars) {
+    s.twinkle += s.twinkleSpeed;
+  }
+}
+
+// ========== Render ==========
+function render() {
+  ctx.fillStyle = CFG.BG_COLOR;
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.save();
+  ctx.translate(W / 2 + shakeX, H / 2 + shakeY);
+
+  const camX = ufo.x;
+  const camY = ufo.y;
+  const boosting = (keys['ShiftLeft'] || keys['ShiftRight']) && ufo.boostGauge > 0;
+  const spd = Math.sqrt(ufo.vx * ufo.vx + ufo.vy * ufo.vy);
+
+  // ---- Planets (far background) ----
+  for (const p of planets) {
+    const px = (p.x - camX * p.layer) % (W * 5);
+    const py = (p.y - camY * p.layer) % (H * 5);
+
+    ctx.save();
+    ctx.globalAlpha = 0.5;
+
+    // Planet body
+    const grad = ctx.createRadialGradient(px - p.r * 0.3, py - p.r * 0.3, p.r * 0.1, px, py, p.r);
+    grad.addColorStop(0, p.color);
+    grad.addColorStop(1, '#111');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(px, py, p.r, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Ring
+    if (p.ringColor) {
+      ctx.strokeStyle = p.ringColor;
+      ctx.lineWidth = p.r * 0.15;
+      ctx.beginPath();
+      ctx.ellipse(px, py, p.r * 1.6, p.r * 0.3, 0.3, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  // ---- Stars ----
+  for (const s of stars) {
+    const parallax = s.speed;
+    let sx = (s.x - camX * parallax);
+    let sy = (s.y - camY * parallax);
+
+    // Wrap
+    const ww = W * 4;
+    const hh = H * 4;
+    sx = ((sx % ww) + ww) % ww - ww / 2;
+    sy = ((sy % hh) + hh) % hh - hh / 2;
+
+    const alpha = 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(s.twinkle));
+
+    // Warp stretch
+    if (boosting && spd > 5) {
+      const warpFactor = (spd - 5) / (CFG.BOOST_MAX_SPEED - 5);
+      const stretchLen = warpFactor * 30 * s.speed;
+
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.strokeStyle = s.color;
+      ctx.lineWidth = s.r * 0.6;
+      ctx.beginPath();
+      const angle = Math.atan2(ufo.vy, ufo.vx);
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(sx - Math.cos(angle) * stretchLen, sy - Math.sin(angle) * stretchLen);
+      ctx.stroke();
+      ctx.restore();
+    } else {
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = s.color;
+      ctx.beginPath();
+      ctx.arc(sx, sy, s.r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  // ---- Trail ----
+  if (trail.length > 1) {
+    for (let i = 1; i < trail.length; i++) {
+      const t0 = trail[i - 1];
+      const t1 = trail[i];
+      const alpha = (1 - i / trail.length) * 0.5;
+      const lw = (1 - i / trail.length) * 4;
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.strokeStyle = '#06b6d4';
+      ctx.lineWidth = lw;
+      ctx.shadowColor = '#06b6d4';
+      ctx.shadowBlur = 8;
+      ctx.beginPath();
+      ctx.moveTo(t0.x - camX, t0.y - camY);
+      ctx.lineTo(t1.x - camX, t1.y - camY);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  // ---- Particles ----
+  for (const p of particles) {
+    const alpha = p.life / p.maxLife;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = p.color;
+    ctx.shadowColor = p.color;
+    ctx.shadowBlur = 6;
+    ctx.beginPath();
+    ctx.arc(p.x - camX, p.y - camY, p.size * alpha, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // ---- Beams ----
+  for (const b of beams) {
+    const alpha = b.life / 50;
+    const bx = b.x - camX;
+    const by = b.y - camY;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.strokeStyle = '#22c55e';
+    ctx.shadowColor = '#22c55e';
+    ctx.shadowBlur = 15;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(bx, by);
+    ctx.lineTo(bx - b.vx * 2, by - b.vy * 2);
+    ctx.stroke();
+    // Beam head glow
+    ctx.fillStyle = '#bbffd0';
+    ctx.shadowBlur = 20;
+    ctx.beginPath();
+    ctx.arc(bx, by, 3 * alpha, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // ---- UFO ----
+  ctx.save();
+  ctx.translate(0, 0);
+
+  // UFO outer glow
+  const glowR = CFG.UFO_RADIUS * 2.5;
+  const glowGrad = ctx.createRadialGradient(0, 0, CFG.UFO_RADIUS * 0.5, 0, 0, glowR);
+  glowGrad.addColorStop(0, 'rgba(6,182,212,0.12)');
+  glowGrad.addColorStop(0.5, 'rgba(59,130,246,0.05)');
+  glowGrad.addColorStop(1, 'rgba(6,182,212,0)');
+  ctx.fillStyle = glowGrad;
+  ctx.beginPath();
+  ctx.arc(0, 0, glowR, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Tilt transform
+  ctx.save();
+  ctx.scale(1 - Math.abs(ufo.tilt) * 0.2, 1);
+
+  // UFO body - main disc
+  const bodyGrad = ctx.createLinearGradient(-CFG.UFO_RADIUS, -8, CFG.UFO_RADIUS, 8);
+  bodyGrad.addColorStop(0, '#1e3a5f');
+  bodyGrad.addColorStop(0.3, '#2d6a8f');
+  bodyGrad.addColorStop(0.6, '#1a4a6f');
+  bodyGrad.addColorStop(1, '#0d2847');
+  ctx.fillStyle = bodyGrad;
+  ctx.beginPath();
+  ctx.ellipse(0, 2, CFG.UFO_RADIUS, CFG.UFO_RADIUS * 0.35, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // UFO dome
+  const domeGrad = ctx.createRadialGradient(0, -4, 2, 0, -2, CFG.UFO_RADIUS * 0.45);
+  domeGrad.addColorStop(0, 'rgba(120,220,255,0.7)');
+  domeGrad.addColorStop(0.5, 'rgba(60,150,220,0.4)');
+  domeGrad.addColorStop(1, 'rgba(30,80,150,0.2)');
+  ctx.fillStyle = domeGrad;
+  ctx.beginPath();
+  ctx.ellipse(0, -2, CFG.UFO_RADIUS * 0.45, CFG.UFO_RADIUS * 0.35, 0, Math.PI, 0);
+  ctx.fill();
+
+  // UFO edge lights
+  const lightCount = 8;
+  for (let i = 0; i < lightCount; i++) {
+    const a = (i / lightCount) * Math.PI * 2 + time * 0.05;
+    const lx = Math.cos(a) * CFG.UFO_RADIUS * 0.85;
+    const ly = Math.sin(a) * CFG.UFO_RADIUS * 0.25 + 2;
+    const flickr = 0.5 + 0.5 * Math.sin(time * 0.15 + i * 1.2);
+    ctx.save();
+    ctx.globalAlpha = flickr;
+    ctx.fillStyle = i % 2 === 0 ? '#06b6d4' : '#3b82f6';
+    ctx.shadowColor = i % 2 === 0 ? '#06b6d4' : '#3b82f6';
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.arc(lx, ly, 1.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // UFO underlight beam
+  ctx.save();
+  ctx.globalAlpha = 0.08 + 0.04 * Math.sin(time * 0.08);
+  const beamGrad = ctx.createRadialGradient(0, 6, 2, 0, 40, CFG.UFO_RADIUS * 1.5);
+  beamGrad.addColorStop(0, 'rgba(6,182,212,0.4)');
+  beamGrad.addColorStop(1, 'rgba(6,182,212,0)');
+  ctx.fillStyle = beamGrad;
+  ctx.beginPath();
+  ctx.moveTo(-CFG.UFO_RADIUS * 0.6, 6);
+  ctx.lineTo(-CFG.UFO_RADIUS * 1.5, 60);
+  ctx.lineTo(CFG.UFO_RADIUS * 1.5, 60);
+  ctx.lineTo(CFG.UFO_RADIUS * 0.6, 6);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+
+  ctx.restore(); // tilt
+  ctx.restore(); // UFO
+
+  ctx.restore(); // camera
+
+  // ---- HUD ----
+  drawHUD(spd, boosting);
+}
+
+function drawHUD(speed, boosting) {
+  const pad = 20;
+  const lineH = 18;
+  ctx.save();
+  ctx.font = '13px "Courier New", monospace';
+  ctx.textBaseline = 'top';
+
+  // Top-left: status
+  ctx.fillStyle = '#22c55e';
+  ctx.shadowColor = '#22c55e';
+  ctx.shadowBlur = 4;
+  const statusLines = [
+    '> UFO FLIGHT SIMULATOR v1.0',
+    `  POS  : (${Math.round(ufo.x)}, ${Math.round(ufo.y)})`,
+    `  VEL  : ${speed.toFixed(2)} u/f`,
+    `  ANGLE: ${(ufo.angle * 180 / Math.PI).toFixed(1)}deg`,
+    `  MODE : ${boosting ? 'WARP DRIVE' : 'CRUISE'}`,
+  ];
+  for (let i = 0; i < statusLines.length; i++) {
+    ctx.fillText(statusLines[i], pad, pad + i * lineH);
+  }
+
+  // Top-right: boost gauge
+  const gaugeW = 140;
+  const gaugeH = 10;
+  const gaugeX = W - pad - gaugeW;
+  const gaugeY = pad + 4;
+
+  ctx.fillStyle = '#22c55e';
+  ctx.fillText('BOOST', gaugeX - 50, gaugeY - 2);
+
+  ctx.strokeStyle = 'rgba(34,197,94,0.4)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(gaugeX, gaugeY, gaugeW, gaugeH);
+
+  const fillW = (ufo.boostGauge / CFG.BOOST_GAUGE_MAX) * gaugeW;
+  const gaugeColor = ufo.boostGauge < 20 ? '#ef4444' : ufo.boostGauge < 50 ? '#eab308' : '#22c55e';
+  ctx.fillStyle = gaugeColor;
+  ctx.shadowColor = gaugeColor;
+  ctx.shadowBlur = 6;
+  ctx.fillRect(gaugeX, gaugeY, fillW, gaugeH);
+
+  ctx.fillStyle = '#22c55e';
+  ctx.shadowBlur = 4;
+  ctx.fillText(`${Math.round(ufo.boostGauge)}%`, gaugeX + gaugeW + 8, gaugeY - 2);
+
+  // Speed bar
+  const spdBarY = gaugeY + 26;
+  ctx.fillText('SPEED', gaugeX - 50, spdBarY - 2);
+  ctx.strokeStyle = 'rgba(34,197,94,0.4)';
+  ctx.strokeRect(gaugeX, spdBarY, gaugeW, gaugeH);
+  const spdFill = (speed / CFG.BOOST_MAX_SPEED) * gaugeW;
+  const spdColor = speed > CFG.MAX_SPEED ? '#06b6d4' : '#22c55e';
+  ctx.fillStyle = spdColor;
+  ctx.shadowColor = spdColor;
+  ctx.fillRect(gaugeX, spdBarY, spdFill, gaugeH);
+
+  // Bottom center: beam cooldown
+  if (ufo.beamCooldown > 0) {
+    ctx.globalAlpha = 0.6;
+    ctx.fillStyle = '#22c55e';
+    ctx.textAlign = 'center';
+    ctx.fillText(`BEAM RECHARGING... ${Math.ceil(ufo.beamCooldown / CFG.BEAM_COOLDOWN * 100)}%`, W / 2, H - pad - 20);
+    ctx.textAlign = 'left';
+    ctx.globalAlpha = 1;
+  }
+
+  // Crosshair
+  ctx.save();
+  ctx.strokeStyle = 'rgba(6,182,212,0.5)';
+  ctx.lineWidth = 1;
+  ctx.shadowBlur = 0;
+  const cx = W / 2, cy = H / 2;
+  const chSize = 12;
+  ctx.beginPath();
+  ctx.moveTo(cx - chSize, cy); ctx.lineTo(cx - 4, cy);
+  ctx.moveTo(cx + 4, cy); ctx.lineTo(cx + chSize, cy);
+  ctx.moveTo(cx, cy - chSize); ctx.lineTo(cx, cy - 4);
+  ctx.moveTo(cx, cy + 4); ctx.lineTo(cx, cy + chSize);
+  ctx.stroke();
+  ctx.restore();
+
+  ctx.restore();
+}
+
+// ========== Loop ==========
+function loop() {
+  if (started) {
+    update();
+    render();
+  }
+  requestAnimationFrame(loop);
+}
+loop();
+
+})();
+</script>
+</body>
+</html>
